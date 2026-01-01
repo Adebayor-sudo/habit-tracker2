@@ -1,0 +1,18 @@
+[Unit]
+Description=Habit Tracker DB Backup
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=DB_PATH=/opt/habit-tracker/data/tracker.db
+Environment=RETENTION=14
+ExecStart=/opt/habit-tracker/scripts/backup.sh
+User=root
+Group=root
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Tracker Database Maintenance
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/habit-tracker
+ExecStart=/opt/habit-tracker/scripts/db-maintenance.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

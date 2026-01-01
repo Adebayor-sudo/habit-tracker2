@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly Habit Tracker DB Backup
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=habit-tracker-backup.service
+
+[Install]
+WantedBy=timers.target

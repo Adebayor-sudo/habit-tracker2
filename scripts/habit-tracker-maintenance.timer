@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Tracker Database Maintenance Weekly
+Requires=habit-tracker-maintenance.service
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

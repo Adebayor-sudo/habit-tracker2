@@ -1,0 +1,24 @@
+[Unit]
+Description=Habit Tracker v3.0 - Personal Operating System
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/habit-tracker
+Environment="NODE_ENV=production"
+Environment="PORT=3000"
+ExecStartPre=/usr/bin/node scripts/migrate.js
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/habit-tracker/app.log
+StandardError=append:/var/log/habit-tracker/error.log
+
+# Graceful shutdown
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

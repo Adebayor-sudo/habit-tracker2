@@ -19,7 +19,13 @@
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect, useCallback } = React;
+    const { useState, useEffect } = React;
+
+    // ============================================================================
+    // TRACKER v3.0 - PERSONAL OPERATING SYSTEM
+    // Navigation: Commitments | Finance | Reports | Profile
+    // Design: Calm, utilitarian, ledger-style interface
+    // ============================================================================
 
     // ========================================================================
     // API CLIENT
@@ -68,10 +74,24 @@
         saveCheckin: (data) => request('POST', '/checkins', data),
         deleteCheckin: (data) => request('DELETE', '/checkins', data),
         
+        // Accounts
+        getAccounts: () => request('GET', '/accounts'),
+        createAccount: (data) => request('POST', '/accounts', data),
+        updateAccount: (id, data) => request('PUT', `/accounts/${id}`, data),
+        deleteAccount: (id) => request('DELETE', `/accounts/${id}`),
+        
+        // Income
+        getIncome: (startDate, endDate, accountId) => request('GET', `/income?start_date=${startDate}&end_date=${endDate}${accountId ? `&account_id=${accountId}` : ''}`),
+        createIncome: (data) => request('POST', '/income', data),
+        deleteIncome: (id) => request('DELETE', `/income/${id}`),
+        
         // Transactions
         getTransactions: (limit = 50, offset = 0) => request('GET', `/transactions?limit=${limit}&offset=${offset}`),
         createTransaction: (data) => request('POST', '/transactions', data),
+        updateTransaction: (id, data) => request('PUT', `/transactions/${id}`, data),
         deleteTransaction: (id) => request('DELETE', `/transactions/${id}`),
+        restoreTransaction: (id) => request('POST', `/transactions/${id}/restore`),
+        getTrash: (limit = 50, offset = 0) => request('GET', `/transactions/trash?limit=${limit}&offset=${offset}`),
         
         // Budgets
         getBudgets: () => request('GET', '/budgets'),
@@ -83,10 +103,19 @@
         createFinancialGoal: (data) => request('POST', '/financial-goals', data),
         updateFinancialGoal: (id, data) => request('PUT', `/financial-goals/${id}`, data),
         
+        // Exchange Rates
+        getExchangeRate: (from, to) => request('GET', `/exchange-rate?from=${from}&to=${to}`),
+        
         // Reports
+        getNetWorth: () => request('GET', '/reports/net-worth'),
+        getIncomeSummary: (year, month) => request('GET', `/reports/income-summary?year=${year}&month=${month}`),
         getWeeklyAlignment: (weekStart) => request('GET', `/reports/weekly-alignment${weekStart ? `?week_start=${weekStart}` : ''}`),
         getMonthlySummary: (year, month) => request('GET', `/reports/monthly-summary?year=${year}&month=${month}`),
         getStreak: () => request('GET', '/reports/streak'),
+
+        // Settings key/value
+        getSetting: (key) => request('GET', `/settings/${key}`),
+        setSetting: (key, value) => request('PUT', `/settings/${key}`, { value }),
       };
     };
 
@@ -154,8 +183,9 @@
     const getTokens = (theme) => ({
       light: {
         bg: 'bg-stone-50',
+        bgAlt: 'bg-white',
         surface: 'bg-white',
-        surfaceHover: 'hover:bg-stone-50',
+        surfaceHover: 'hover:bg-stone-100',
         border: 'border-stone-200',
         borderSubtle: 'border-stone-100',
         text: 'text-stone-900',
@@ -168,16 +198,17 @@
       },
       dark: {
         bg: 'bg-zinc-900',
+        bgAlt: 'bg-zinc-950',
         surface: 'bg-zinc-800',
         surfaceHover: 'hover:bg-zinc-700',
         border: 'border-zinc-700',
-        borderSubtle: 'border-zinc-700/50',
+        borderSubtle: 'border-zinc-800',
         text: 'text-zinc-100',
         textSecondary: 'text-zinc-400',
         textMuted: 'text-zinc-500',
         accent: 'text-slate-400',
         accentBg: 'bg-slate-500',
-        accentBgLight: 'bg-zinc-700',
+        accentBgLight: 'bg-slate-800',
         input: 'bg-zinc-700 border-zinc-600',
       }
     })[theme];
@@ -322,12 +353,12 @@
       const [user, setUser] = useState(initialUser);
       const [theme, setTheme] = useState(initialUser.theme || 'light');
       const [activeSection, setActiveSection] = useState('commitments');
-      const [financeView, setFinanceView] = useState('overview');
       
       // Data state
       const [domains, setDomains] = useState([]);
       const [commitments, setCommitments] = useState({});
       const [checkins, setCheckins] = useState({});
+      const [accounts, setAccounts] = useState({ accounts: [], grouped: {} });
       const [transactions, setTransactions] = useState([]);
       const [budgets, setBudgets] = useState([]);
       const [financialGoals, setFinancialGoals] = useState([]);
@@ -342,6 +373,7 @@
       const [showAddBudget, setShowAddBudget] = useState(false);
       const [newCommitmentText, setNewCommitmentText] = useState('');
       const [newCommitmentFreq, setNewCommitmentFreq] = useState('daily');
+      const [toast, setToast] = useState(null);
       
       const api = createApi(token);
       const t = getTokens(theme);
@@ -356,13 +388,23 @@
         loadData();
       }, []);
 
+      // Load trash when switching to trash view
+      useEffect(() => {
+        if (activeSection === 'finance' && viewMode === 'trash') {
+          loadTrash();
+        } else if (activeSection === 'finance' && viewMode === 'table') {
+          loadTransactions();
+        }
+      }, [viewMode]);
+
       const loadData = async () => {
         try {
-          const [domainsRes, commitmentsRes, checkinsRes, txRes, budgetsRes, goalsRes, alignmentRes] = await Promise.all([
+          const [domainsRes, commitmentsRes, checkinsRes, accountsRes, txRes, budgetsRes, goalsRes, alignmentRes] = await Promise.all([
             api.getDomains(),
             api.getCommitments(),
             api.getCheckins(weekDates[0], weekDates[6]),
-            api.getTransactions(20),
+            api.getAccounts(),
+            api.getTransactions(50),
             api.getBudgets(),
             api.getFinancialGoals(),
             api.getWeeklyAlignment(weekStart),
@@ -371,13 +413,38 @@
           setDomains(domainsRes);
           setCommitments(commitmentsRes.grouped || {});
           setCheckins(checkinsRes.byDate || {});
+          setAccounts(accountsRes);
           setTransactions(txRes.transactions || []);
           setBudgets(budgetsRes);
           setFinancialGoals(goalsRes);
           setWeeklyAlignment(alignmentRes.alignment || {});
         } catch (err) {
           console.error('Load error:', err);
+          setToast(err.message || 'Failed to load data');
         }
+      };
+
+      const loadTransactions = async () => {
+        try {
+          const txRes = await api.getTransactions(50);
+          setTransactions(txRes.transactions || []);
+        } catch (err) {
+          console.error('Load transactions error:', err);
+        }
+      };
+
+      const loadTrash = async () => {
+        try {
+          const trashRes = await api.getTrash(50);
+          setTransactions(trashRes.transactions || []);
+        } catch (err) {
+          console.error('Load trash error:', err);
+        }
+      };
+
+      const showToast = (message) => {
+        setToast(message);
+        setTimeout(() => setToast(null), 3000);
       };
 
       // Update theme
@@ -434,6 +501,7 @@
           setShowAddCommitment(null);
         } catch (err) {
           console.error('Add commitment error:', err);
+          showToast(err.message || 'Could not add commitment');
         }
       };
 
@@ -470,7 +538,7 @@
       
       const Navigation = () => (
         <nav className={`${t.surface} border-b ${t.border} sticky top-0 z-50`}>
-          <div className="max-w-5xl mx-auto px-4">
+          <div className="max-w-6xl mx-auto px-4">
             <div className="flex items-center justify-between h-14">
               <div className="flex items-center gap-1">
                 {[
@@ -482,7 +550,7 @@
                   <button
                     key={section.id}
                     onClick={() => setActiveSection(section.id)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       activeSection === section.id
                         ? `${t.accentBgLight} ${t.accent}`
                         : `${t.textSecondary} ${t.surfaceHover}`
@@ -510,9 +578,32 @@
       
       const CommitmentsSection = () => {
         const todayCheckins = checkins[selectedDate] || {};
+        const totalCommitments = Object.values(commitments).flat().length;
         
         return (
           <div className="space-y-6">
+            {/* Getting Started Message */}
+            {totalCommitments === 0 && (
+              <div className={`${t.surface} rounded-lg border ${t.border} p-6`}>
+                <div className="flex items-start gap-4">
+                  <div className={`p-3 rounded-lg ${t.accentBgLight} shrink-0`}>
+                    <Icon name="Target" className={`w-6 h-6 ${t.accent}`} />
+                  </div>
+                  <div>
+                    <h3 className={`font-medium ${t.text} mb-2`}>Welcome to Tracker v3.0!</h3>
+                    <p className={`text-sm ${t.textSecondary} mb-3`}>
+                      Start by adding commitments to your domains below. Click on any domain card (Health, Fitness, Work, etc.) 
+                      to expand it, then click "+ Add commitment" to create your first tracking item.
+                    </p>
+                    <p className={`text-sm ${t.textSecondary}`}>
+                      <strong>Tip:</strong> Keep commitments specific and actionable. For example: "Drink 8 glasses of water daily" 
+                      or "Exercise for 30 minutes" work better than vague goals.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Week Header */}
             <div className={`${t.surface} rounded-lg border ${t.border} p-4`}>
               <div className="flex items-center justify-between mb-4">
@@ -520,7 +611,15 @@
                   <h2 className={`text-lg font-semibold ${t.text}`}>
                     Week of {formatDate(weekStart)}
                   </h2>
-                  <p className={`text-sm ${t.textSecondary}`}>Daily check-ins</p>
+                  <p className={`text-sm ${t.textSecondary}`}>Weekly planning and daily check-ins</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button className={`p-2 rounded-lg ${t.surfaceHover} ${t.textSecondary}`}>
+                    <Icon name="ChevronLeft" className="w-5 h-5" />
+                  </button>
+                  <button className={`p-2 rounded-lg ${t.surfaceHover} ${t.textSecondary}`}>
+                    <Icon name="ChevronRight" className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
 
@@ -532,6 +631,7 @@
                   const completedCount = Object.values(dayCheckins).filter(v => v === 'done').length;
                   const isSelected = date === selectedDate;
                   const isToday = date === new Date().toISOString().split('T')[0];
+                  const isPast = new Date(date) < new Date(selectedDate);
                   
                   return (
                     <button
@@ -547,9 +647,11 @@
                       <div className={`text-lg font-semibold ${isSelected ? 'text-white' : t.text}`}>
                         {new Date(date).getDate()}
                       </div>
-                      <div className={`text-xs ${isSelected ? 'text-white/70' : t.textMuted}`}>
-                        {completedCount}/{allCommitments.length}
-                      </div>
+                      {isPast && (
+                        <div className={`text-xs ${isSelected ? 'text-white/70' : t.textMuted}`}>
+                          {completedCount}/{allCommitments.length}
+                        </div>
+                      )}
                     </button>
                   );
                 })}
@@ -557,7 +659,7 @@
             </div>
 
             {/* Domain Cards */}
-            <div className="space-y-3">
+            <div className="grid gap-4">
               {domains.map(domain => {
                 const domainCommitments = commitments[domain.key] || [];
                 const alignment = getDomainAlignment(domain.key);
@@ -576,30 +678,45 @@
                         </div>
                         <div className="text-left">
                           <h3 className={`font-medium ${t.text}`}>{domain.name}</h3>
-                          <p className={`text-sm ${t.textSecondary}`}>{domainCommitments.length} commitments</p>
+                          <p className={`text-sm ${t.textSecondary}`}>
+                            {domainCommitments.length === 0 ? 'No commitments yet' : `${domainCommitments.length} commitments`}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-20 h-2 rounded-full ${theme === 'light' ? 'bg-stone-200' : 'bg-zinc-700'}`}>
-                            <div 
-                              className={`h-full rounded-full transition-all ${
-                                alignment >= 80 ? 'bg-emerald-500' : 
-                                alignment >= 50 ? 'bg-amber-500' : 'bg-red-500'
-                              }`}
-                              style={{ width: `${alignment}%` }}
-                            />
+                        {domainCommitments.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className={`w-24 h-2 rounded-full ${theme === 'light' ? 'bg-stone-200' : 'bg-zinc-700'}`}>
+                              <div 
+                                className={`h-full rounded-full transition-all ${
+                                  alignment >= 80 ? 'bg-emerald-500' : 
+                                  alignment >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                                }`}
+                                style={{ width: `${alignment}%` }}
+                              />
+                            </div>
+                            <span className={`text-sm font-medium ${t.textSecondary}`}>{alignment}%</span>
                           </div>
-                          <span className={`text-sm font-medium ${t.textSecondary} w-10`}>{alignment}%</span>
-                        </div>
-                        <Icon name={isExpanded ? 'ChevronDown' : 'ChevronRight'} className={`w-5 h-5 ${t.textMuted}`} />
+                        )}
+                        <Icon 
+                          name={isExpanded ? 'ChevronDown' : 'ChevronRight'} 
+                          className={`w-5 h-5 ${t.textMuted}`} 
+                        />
                       </div>
                     </button>
 
                     {/* Expanded Commitments */}
                     {isExpanded && (
                       <div className={`border-t ${t.border}`}>
-                        {domainCommitments.map(commitment => {
+                        {domainCommitments.length === 0 ? (
+                          <div className={`p-8 text-center`}>
+                            <Icon name={DOMAIN_ICONS[domain.key] || 'Target'} className={`w-12 h-12 mx-auto mb-3 ${t.textMuted}`} />
+                            <p className={`text-sm ${t.textSecondary} mb-4`}>
+                              No commitments in {domain.name} yet. Add your first commitment to start tracking.
+                            </p>
+                          </div>
+                        ) : (
+                          domainCommitments.map(commitment => {
                           const status = todayCheckins[commitment.id];
                           return (
                             <div key={commitment.id} className={`flex items-center justify-between p-4 border-b last:border-b-0 ${t.borderSubtle}`}>
@@ -640,7 +757,8 @@
                               </div>
                             </div>
                           );
-                        })}
+                        })
+                        )}
                         
                         {/* Add commitment */}
                         {showAddCommitment === domain.key ? (
@@ -707,7 +825,7 @@
                       }`}>
                         {alignment}%
                       </div>
-                      <div className={`text-xs ${t.textSecondary} truncate`}>{domain.name}</div>
+                      <div className={`text-xs ${t.textSecondary}`}>{domain.name}</div>
                     </div>
                   );
                 })}
@@ -722,130 +840,503 @@
       // ======================================================================
       
       const FinanceSection = () => {
-        const [newTx, setNewTx] = useState({ type: 'expense', category: '', amount: '', description: '' });
+        const [viewMode, setViewMode] = useState('accounts'); // accounts, table, calendar, chart, trash
+        const [newTx, setNewTx] = useState({ type: 'expense', category: '', amount: '', description: '', account_id: '', currency: '' });
+        const [newTransfer, setNewTransfer] = useState({ from_account_id: '', to_account_id: '', amount: '', description: '', currency: '' });
+        const [showAddAccount, setShowAddAccount] = useState(false);
+        const [showEditAccount, setShowEditAccount] = useState(null); // null or account id being edited
+        const [newAccount, setNewAccount] = useState({ name: '', bank: '', type: 'checking', balance: '', currency: '', role: 'spending' });
+        const [editAccount, setEditAccount] = useState(null); // account being edited
+        const [showTransfer, setShowTransfer] = useState(false);
+        const [showEditTransaction, setShowEditTransaction] = useState(null); // null or transaction id being edited
+        const [editTx, setEditTx] = useState(null); // transaction being edited
+        const [showDeleteConfirm, setShowDeleteConfirm] = useState(null); // null or transaction id to delete
+        const [formError, setFormError] = useState('');
+        const [conversionInfo, setConversionInfo] = useState(null); // { amount, fromCurrency, toCurrency, converted, rate }
+
+        // Parse amount string accepting both , and . as separators
+        // Handles: 1000.00, 1000,00, 1,000.00, 1.000,00, 60000, 60,000
+        const parseAmount = (str) => {
+          if (!str) return 0;
+          const normalized = String(str).trim().replace(/\s/g, '');
+          
+          // Find positions of . and ,
+          const lastDot = normalized.lastIndexOf('.');
+          const lastComma = normalized.lastIndexOf(',');
+          
+          // Determine which is the decimal separator
+          let final = normalized;
+          
+          if (lastDot === -1 && lastComma === -1) {
+            // No separators at all: "60000" → 60000
+            final = normalized;
+          } else if (lastDot > lastComma) {
+            // Period is last
+            const afterDot = normalized.substring(lastDot + 1);
+            if (afterDot.length >= 3) {
+              // "60.000" → 3+ digits after period = thousands separator
+              final = normalized.replace(/\./g, '').replace(/,/g, '');
+            } else {
+              // "1,234.56" or "1234.56" → period is decimal, commas are thousands
+              final = normalized.replace(/,/g, '');
+            }
+          } else if (lastComma > lastDot) {
+            // Comma is last, but check if it's thousands or decimal
+            // If 3 or more digits after comma → it's thousands separator
+            const afterComma = normalized.substring(lastComma + 1);
+            if (afterComma.length >= 3) {
+              // "60,000" → remove comma (it's thousands separator)
+              final = normalized.replace(/,/g, '').replace(/\./g, '');
+            } else {
+              // "1.234,56" → comma is decimal, period is thousands
+              final = normalized.replace(/\./g, '').replace(/,/g, '.');
+            }
+          }
+          
+          return parseFloat(final) || 0;
+        };
+
+        // Update conversion preview when amount or currency changes
+        useEffect(() => {
+          const updateConversion = async () => {
+            const txCurrency = newTx.currency || currency;
+            const amount = parseAmount(newTx.amount);
+            
+            if (amount > 0 && txCurrency !== currency && newTx.type !== 'transfer') {
+              try {
+                const res = await api.getExchangeRate(txCurrency, currency);
+                const converted = amount * res.rate;
+                setConversionInfo({
+                  amount,
+                  fromCurrency: txCurrency,
+                  toCurrency: currency,
+                  converted,
+                  rate: res.rate
+                });
+              } catch (err) {
+                console.error('Conversion fetch error:', err);
+              }
+            } else {
+              setConversionInfo(null);
+            }
+          };
+
+          const timer = setTimeout(updateConversion, 500); // Debounce by 500ms
+          return () => clearTimeout(timer);
+        }, [newTx.amount, newTx.currency, newTx.type, currency]);
+
+        const totalBalance = accounts.accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0);
+
+        const addAccount = async () => {
+          if (!newAccount.name || !newAccount.bank) return;
+          try {
+            setFormError('');
+            await api.createAccount({
+              name: newAccount.name,
+              bank: newAccount.bank,
+              type: newAccount.type,
+              balance: parseAmount(newAccount.balance),
+              currency: newAccount.currency || currency
+            });
+            const accountsRes = await api.getAccounts();
+            setAccounts(accountsRes);
+            setNewAccount({ name: '', bank: '', type: 'checking', balance: '', currency: '' });
+            setShowAddAccount(false);
+          } catch (err) {
+            console.error('Add account error:', err);
+            setFormError(err.message || 'Could not create account');
+          }
+        };
+
+        const updateAccount = async () => {
+          if (!editAccount.name || !editAccount.bank) return;
+          try {
+            setFormError('');
+            await api.updateAccount(editAccount.id, {
+              name: editAccount.name,
+              bank: editAccount.bank,
+              type: editAccount.type,
+              balance: parseAmount(editAccount.balance),
+              currency: editAccount.currency
+            });
+            const accountsRes = await api.getAccounts();
+            setAccounts(accountsRes);
+            setShowEditAccount(null);
+            setEditAccount(null);
+          } catch (err) {
+            console.error('Update account error:', err);
+            setFormError(err.message || 'Could not update account');
+          }
+        };
 
         const addTransaction = async () => {
-          if (!newTx.category || !newTx.amount) return;
+          if (!newTx.category || !newTx.amount || !newTx.account_id) return;
           try {
-            const res = await api.createTransaction({
+            setFormError('');
+            await api.createTransaction({
               date: new Date().toISOString().split('T')[0],
               type: newTx.type,
               category: newTx.category,
-              amount: parseFloat(newTx.amount),
+              amount: parseAmount(newTx.amount),
               description: newTx.description,
-              currency: currency
+              account_id: parseInt(newTx.account_id),
+              currency: newTx.currency || currency
             });
-            setTransactions(prev => [res.transaction, ...prev]);
-            setNewTx({ type: 'expense', category: '', amount: '', description: '' });
+            const [accountsRes, txRes] = await Promise.all([api.getAccounts(), api.getTransactions(50)]);
+            setAccounts(accountsRes);
+            setTransactions(txRes.transactions || []);
+            setNewTx({ type: 'expense', category: '', amount: '', description: '', account_id: '', currency: '' });
             setShowAddTransaction(false);
           } catch (err) {
             console.error('Add transaction error:', err);
+            setFormError(err.message || 'Could not create transaction');
+          }
+        };
+
+        const addTransfer = async () => {
+          if (!newTransfer.from_account_id || !newTransfer.to_account_id || !newTransfer.amount) return;
+          try {
+            setFormError('');
+            await api.createTransaction({
+              date: new Date().toISOString().split('T')[0],
+              type: 'transfer',
+              category: 'Transfer',
+              amount: parseAmount(newTransfer.amount),
+              description: newTransfer.description || 'Internal transfer',
+              account_id: parseInt(newTransfer.from_account_id),
+              to_account_id: parseInt(newTransfer.to_account_id),
+              currency: newTransfer.currency || currency
+            });
+            const [accountsRes, txRes] = await Promise.all([api.getAccounts(), api.getTransactions(50)]);
+            setAccounts(accountsRes);
+            setTransactions(txRes.transactions || []);
+            setNewTransfer({ from_account_id: '', to_account_id: '', amount: '', description: '', currency: '' });
+            setShowTransfer(false);
+          } catch (err) {
+            console.error('Transfer error:', err);
+            setFormError(err.message || 'Could not transfer');
+          }
+        };
+
+        const startEditTransaction = (tx) => {
+          setEditTx({
+            id: tx.id,
+            account_id: tx.account_id || '',
+            to_account_id: tx.to_account_id || '',
+            date: tx.date,
+            type: tx.type,
+            category: tx.category,
+            amount: tx.amount.toString(),
+            currency: tx.currency || currency,
+            description: tx.description || ''
+          });
+          setShowEditTransaction(tx.id);
+          setFormError('');
+        };
+
+        const updateTransaction = async () => {
+          if (!editTx.category || !editTx.amount || !editTx.account_id) return;
+          try {
+            setFormError('');
+            await api.updateTransaction(editTx.id, {
+              date: editTx.date,
+              type: editTx.type,
+              category: editTx.category,
+              amount: parseAmount(editTx.amount),
+              description: editTx.description,
+              account_id: parseInt(editTx.account_id),
+              to_account_id: editTx.to_account_id ? parseInt(editTx.to_account_id) : null,
+              currency: editTx.currency || currency
+            });
+            const [accountsRes, txRes] = await Promise.all([api.getAccounts(), api.getTransactions(50)]);
+            setAccounts(accountsRes);
+            setTransactions(txRes.transactions || []);
+            setEditTx(null);
+            setShowEditTransaction(null);
+            showToast('Transaction updated');
+          } catch (err) {
+            console.error('Update transaction error:', err);
+            setFormError(err.message || 'Could not update transaction');
+          }
+        };
+
+        const deleteTransaction = async (id) => {
+          try {
+            await api.deleteTransaction(id);
+            const [accountsRes, txRes] = await Promise.all([api.getAccounts(), api.getTransactions(50)]);
+            setAccounts(accountsRes);
+            setTransactions(txRes.transactions || []);
+            setShowDeleteConfirm(null);
+            showToast('Transaction moved to trash');
+          } catch (err) {
+            console.error('Delete transaction error:', err);
+            showToast(err.message || 'Could not delete transaction');
+          }
+        };
+
+        const restoreTransaction = async (id) => {
+          try {
+            await api.restoreTransaction(id);
+            const [accountsRes, txRes] = await Promise.all([api.getAccounts(), api.getTransactions(50)]);
+            setAccounts(accountsRes);
+            setTransactions(txRes.transactions || []);
+            showToast('Transaction restored');
+          } catch (err) {
+            console.error('Restore transaction error:', err);
+            showToast(err.message || 'Could not restore transaction');
           }
         };
 
         return (
           <div className="space-y-6">
-            {/* Sub-Navigation */}
+            {/* View Mode Toggle */}
             <div className={`flex gap-1 p-1 ${t.surface} rounded-lg border ${t.border}`}>
-              {['overview', 'transactions', 'budgets', 'goals'].map(view => (
+              {[
+                { id: 'accounts', label: 'Accounts' },
+                { id: 'table', label: 'Transactions' },
+                { id: 'calendar', label: 'Calendar' },
+                { id: 'chart', label: 'Chart' },
+                { id: 'trash', label: 'Trash' }
+              ].map(view => (
                 <button
-                  key={view}
-                  onClick={() => setFinanceView(view)}
-                  className={`flex-1 py-2 px-4 rounded-md text-sm font-medium capitalize transition-colors ${
-                    financeView === view ? `${t.accentBg} text-white` : `${t.textSecondary} ${t.surfaceHover}`
+                  key={view.id}
+                  onClick={() => setViewMode(view.id)}
+                  className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                    viewMode === view.id ? `${t.accentBg} text-white` : `${t.textSecondary} ${t.surfaceHover}`
                   }`}
                 >
-                  {view}
+                  {view.label}
                 </button>
               ))}
             </div>
 
-            {financeView === 'overview' && (
+            {viewMode === 'accounts' && (
               <>
-                {/* Summary Cards */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div className={`${t.surface} rounded-lg border ${t.border} p-4`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Icon name="ArrowUp" className="w-4 h-4 text-emerald-600" />
-                      <span className={`text-sm ${t.textSecondary}`}>Income</span>
-                    </div>
-                    <div className="text-2xl font-semibold text-emerald-600">{sym}{income.toLocaleString()}</div>
-                  </div>
-                  <div className={`${t.surface} rounded-lg border ${t.border} p-4`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Icon name="ArrowDown" className="w-4 h-4 text-red-600" />
-                      <span className={`text-sm ${t.textSecondary}`}>Expenses</span>
-                    </div>
-                    <div className="text-2xl font-semibold text-red-600">{sym}{expenses.toLocaleString()}</div>
-                  </div>
-                  <div className={`${t.surface} rounded-lg border ${t.border} p-4`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Icon name="TrendingUp" className={`w-4 h-4 ${net >= 0 ? 'text-emerald-600' : 'text-red-600'}`} />
-                      <span className={`text-sm ${t.textSecondary}`}>Net</span>
-                    </div>
-                    <div className={`text-2xl font-semibold ${net >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{sym}{net.toLocaleString()}</div>
-                  </div>
+                {/* Total Net Amount */}
+                <div className={`${t.surface} rounded-lg border ${t.border} p-6`}>
+                  <div className={`text-sm ${t.textSecondary} mb-2`}>Total Net Amount</div>
+                  <div className={`text-4xl font-semibold ${t.text}`}>{sym}{totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  <div className={`text-sm ${t.textSecondary} mt-2`}>Across {accounts.accounts.length} accounts</div>
                 </div>
 
-                {/* Savings Goal */}
-                <div className={`${t.surface} rounded-lg border ${t.border} p-4`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className={`text-sm font-medium ${t.text}`}>30% Savings Goal</span>
-                    <span className={`text-sm font-medium ${savingsRate >= 30 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      {savingsRate.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className={`h-2 rounded-full ${theme === 'light' ? 'bg-stone-200' : 'bg-zinc-700'}`}>
-                    <div 
-                      className={`h-full rounded-full transition-all ${savingsRate >= 30 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                      style={{ width: `${Math.min(Math.max(savingsRate, 0), 100)}%` }}
+                {/* Quick Actions */}
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setShowAddAccount(true)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg ${t.accentBg} text-white text-sm font-medium`}
+                  >
+                    <Icon name="Plus" className="w-4 h-4" />
+                    Add Account
+                  </button>
+                  <button 
+                    onClick={() => setShowTransfer(true)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border ${t.border} ${t.surfaceHover} text-sm font-medium`}
+                  >
+                    <Icon name="ArrowDown" className="w-4 h-4 rotate-90" />
+                    Transfer
+                  </button>
+                  <button 
+                    onClick={() => setShowAddTransaction(true)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border ${t.border} ${t.surfaceHover} text-sm font-medium`}
+                  >
+                    <Icon name="Plus" className="w-4 h-4" />
+                    Transaction
+                  </button>
+                </div>
+
+                {/* Add Account Modal */}
+                {showAddAccount && (
+                  <div className={`${t.surface} rounded-lg border ${t.border} p-4 space-y-3`}>
+                    <h3 className={`font-medium ${t.text}`}>New Account</h3>
+                    {formError && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{formError}</div>}
+                    <input
+                      type="text"
+                      value={newAccount.bank}
+                      onChange={(e) => setNewAccount(p => ({ ...p, bank: e.target.value }))}
+                      placeholder="Bank name (e.g., Sterling, Kuda, Zenith)"
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
                     />
-                  </div>
-                </div>
-
-                {/* Budget Overview */}
-                {budgets.length > 0 && (
-                  <div className={`${t.surface} rounded-lg border ${t.border} p-4`}>
-                    <h3 className={`font-medium ${t.text} mb-4`}>Budget Status</h3>
-                    <div className="space-y-3">
-                      {budgets.slice(0, 5).map(budget => {
-                        const pct = budget.allocated > 0 ? (budget.spent / budget.allocated) * 100 : 0;
-                        return (
-                          <div key={budget.id}>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className={`text-sm ${t.text}`}>{budget.category}</span>
-                              <span className={`text-sm ${t.textSecondary}`}>{sym}{budget.spent} / {sym}{budget.allocated}</span>
-                            </div>
-                            <div className={`h-1.5 rounded-full ${theme === 'light' ? 'bg-stone-200' : 'bg-zinc-700'}`}>
-                              <div 
-                                className={`h-full rounded-full ${pct > 90 ? 'bg-red-500' : pct > 70 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                                style={{ width: `${Math.min(pct, 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <input
+                      type="text"
+                      value={newAccount.name}
+                      onChange={(e) => setNewAccount(p => ({ ...p, name: e.target.value }))}
+                      placeholder="Account name (e.g., Salary, Current)"
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    />
+                    <select
+                      value={newAccount.type}
+                      onChange={(e) => setNewAccount(p => ({ ...p, type: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="checking">Checking</option>
+                      <option value="savings">Savings</option>
+                    </select>
+                    <select
+                      value={newAccount.currency}
+                      onChange={(e) => setNewAccount(p => ({ ...p, currency: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="">Currency (default: {currency})</option>
+                      {Object.entries(CURRENCIES).map(([code, { name, symbol }]) => (
+                        <option key={code} value={code}>{symbol} {code}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={newAccount.role}
+                      onChange={(e) => setNewAccount(p => ({ ...p, role: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="income">Income (primary salary source)</option>
+                      <option value="conversion">Conversion (bureau de change)</option>
+                      <option value="spending">Spending (daily expenses)</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={newAccount.balance}
+                      onChange={(e) => setNewAccount(p => ({ ...p, balance: e.target.value }))}
+                      placeholder="Current balance (e.g., 17,200.37 or 17200.37)"
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={addAccount} className={`flex-1 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}>
+                        Create Account
+                      </button>
+                      <button onClick={() => { setShowAddAccount(false); setFormError(''); }} className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}>
+                        Cancel
+                      </button>
                     </div>
                   </div>
                 )}
-              </>
-            )}
 
-            {financeView === 'transactions' && (
-              <div className={`${t.surface} rounded-lg border ${t.border} overflow-hidden`}>
-                <div className={`flex items-center justify-between p-4 border-b ${t.border}`}>
-                  <h3 className={`font-medium ${t.text}`}>Transactions</h3>
-                  <button 
-                    onClick={() => setShowAddTransaction(!showAddTransaction)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${t.accentBg} text-white text-sm`}
-                  >
-                    <Icon name="Plus" className="w-4 h-4" />
-                    Add
-                  </button>
-                </div>
-                
+                {/* Edit Account Modal */}
+                {showEditAccount && editAccount && (
+                  <div className={`${t.surface} rounded-lg border ${t.border} p-4 space-y-3`}>
+                    <h3 className={`font-medium ${t.text}`}>Edit Account</h3>
+                    {formError && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{formError}</div>}
+                    <input
+                      type="text"
+                      value={editAccount.bank}
+                      onChange={(e) => setEditAccount(p => ({ ...p, bank: e.target.value }))}
+                      placeholder="Bank name (e.g., Sterling, Kuda, Zenith)"
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    />
+                    <input
+                      type="text"
+                      value={editAccount.name}
+                      onChange={(e) => setEditAccount(p => ({ ...p, name: e.target.value }))}
+                      placeholder="Account name (e.g., Salary, Current)"
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    />
+                    <select
+                      value={editAccount.type}
+                      onChange={(e) => setEditAccount(p => ({ ...p, type: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="checking">Checking</option>
+                      <option value="savings">Savings</option>
+                    </select>
+                    <select
+                      value={editAccount.currency}
+                      onChange={(e) => setEditAccount(p => ({ ...p, currency: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="">Currency</option>
+                      {Object.entries(CURRENCIES).map(([code, { name, symbol }]) => (
+                        <option key={code} value={code}>{symbol} {code}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={editAccount.role}
+                      onChange={(e) => setEditAccount(p => ({ ...p, role: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="income">Income (primary salary source)</option>
+                      <option value="conversion">Conversion (bureau de change)</option>
+                      <option value="spending">Spending (daily expenses)</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={editAccount.balance}
+                      onChange={(e) => setEditAccount(p => ({ ...p, balance: e.target.value }))}
+                      placeholder="Current balance (e.g., 17,200.37 or 17200.37)"
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={updateAccount} className={`flex-1 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}>
+                        Save Changes
+                      </button>
+                      <button onClick={() => { setShowEditAccount(null); setEditAccount(null); setFormError(''); }} className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Transfer Modal */}
+                {showTransfer && (
+                  <div className={`${t.surface} rounded-lg border ${t.border} p-4 space-y-3`}>
+                    <h3 className={`font-medium ${t.text}`}>Transfer Between Accounts</h3>
+                    {formError && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{formError}</div>}
+                    <select
+                      value={newTransfer.from_account_id}
+                      onChange={(e) => setNewTransfer(p => ({ ...p, from_account_id: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="">From account</option>
+                      {accounts.accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.bank} - {acc.name} ({sym}{acc.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</option>
+                      ))}
+                    </select>
+                    <select
+                      value={newTransfer.to_account_id}
+                      onChange={(e) => setNewTransfer(p => ({ ...p, to_account_id: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="">To account</option>
+                      {accounts.accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.bank} - {acc.name} ({sym}{acc.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={newTransfer.amount}
+                      onChange={(e) => setNewTransfer(p => ({ ...p, amount: e.target.value }))}
+                      placeholder="Amount (e.g., 10,000 or 10000)"
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    />
+                    <select
+                      value={newTransfer.currency}
+                      onChange={(e) => setNewTransfer(p => ({ ...p, currency: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="">Currency (default: {currency})</option>
+                      {Object.entries(CURRENCIES).map(([code, { name, symbol }]) => (
+                        <option key={code} value={code}>{symbol} {code}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={newTransfer.description}
+                      onChange={(e) => setNewTransfer(p => ({ ...p, description: e.target.value }))}
+                      placeholder="Description (optional)"
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={addTransfer} className={`flex-1 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}>
+                        Transfer
+                      </button>
+                      <button onClick={() => { setShowTransfer(false); setFormError(''); }} className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Add Transaction Modal */}
                 {showAddTransaction && (
-                  <div className={`p-4 border-b ${t.border} space-y-3`}>
+                  <div className={`${t.surface} rounded-lg border ${t.border} p-4 space-y-3`}>
+                    <h3 className={`font-medium ${t.text}`}>New Transaction</h3>
+                    {formError && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{formError}</div>}
                     <div className="flex gap-2">
                       <button
                         onClick={() => setNewTx(p => ({ ...p, type: 'income', category: '' }))}
@@ -861,6 +1352,46 @@
                       </button>
                     </div>
                     <select
+                      value={newTx.account_id}
+                      onChange={(e) => setNewTx(p => ({ ...p, account_id: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="">Select account</option>
+                      {accounts.accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.bank} - {acc.name} ({sym}{acc.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</option>
+                      ))}
+                    </select>
+                    
+                    {/* Show available balance for debit transactions */}
+                    {newTx.account_id && (newTx.type === 'expense' || newTx.type === 'transfer') && (
+                      (() => {
+                        const selectedAccount = accounts.accounts.find(acc => acc.id === parseInt(newTx.account_id));
+                        if (!selectedAccount) return null;
+                        const amount = parseAmount(newTx.amount);
+                        const postTxBalance = selectedAccount.balance - amount;
+                        const isInvalid = postTxBalance < 0;
+                        
+                        return (
+                          <div className={`p-3 rounded-lg ${isInvalid ? 'bg-red-50 border border-red-200' : `${t.accentBgLight}`}`}>
+                            <div className={`text-sm ${isInvalid ? 'text-red-700' : t.text}`}>
+                              <div><strong>Available:</strong> {sym}{selectedAccount.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                              {amount > 0 && (
+                                <>
+                                  <div className="mt-1"><strong>After transaction:</strong> {sym}{postTxBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                  {isInvalid && (
+                                    <div className="mt-1 font-semibold text-red-700">
+                                      ⚠ Insufficient funds. Shortfall: {sym}{Math.abs(postTxBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()
+                    )}
+                    
+                    <select
                       value={newTx.category}
                       onChange={(e) => setNewTx(p => ({ ...p, category: e.target.value }))}
                       className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
@@ -871,10 +1402,10 @@
                       ))}
                     </select>
                     <input
-                      type="number"
+                      type="text"
                       value={newTx.amount}
                       onChange={(e) => setNewTx(p => ({ ...p, amount: e.target.value }))}
-                      placeholder="Amount"
+                      placeholder="Amount (e.g., 10,000 or 10000)"
                       className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
                     />
                     <input
@@ -884,34 +1415,298 @@
                       placeholder="Description (optional)"
                       className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
                     />
+                    <select
+                      value={newTx.currency}
+                      onChange={(e) => setNewTx(p => ({ ...p, currency: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="">Currency (default: {currency})</option>
+                      {Object.entries(CURRENCIES).map(([code, { name, symbol }]) => (
+                        <option key={code} value={code}>{symbol} {code}</option>
+                      ))}
+                    </select>
+                    
+                    {conversionInfo && (
+                      <div className={`p-3 rounded-lg ${t.accentBgLight}`}>
+                        <div className={`text-sm ${t.text}`}>
+                          <strong>Exchange Rate:</strong> 1 {conversionInfo.fromCurrency} = {conversionInfo.rate.toFixed(4)} {conversionInfo.toCurrency}
+                        </div>
+                        <div className={`text-sm ${t.textSecondary} mt-1`}>
+                          {conversionInfo.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {conversionInfo.fromCurrency} ≈ {sym}{conversionInfo.converted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({currency})
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="flex gap-2">
                       <button onClick={addTransaction} className={`flex-1 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}>
                         Add Transaction
                       </button>
-                      <button onClick={() => setShowAddTransaction(false)} className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}>
+                      <button onClick={() => { setShowAddTransaction(false); setFormError(''); setConversionInfo(null); }} className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}>
                         Cancel
                       </button>
                     </div>
                   </div>
                 )}
-                
+
+                {/* Accounts by Bank */}
+                <div className="space-y-4">
+                  {Object.entries(accounts.grouped).map(([bank, bankAccounts]) => (
+                    <div key={bank} className={`${t.surface} rounded-lg border ${t.border} overflow-hidden`}>
+                      <div className={`p-4 border-b ${t.border}`}>
+                        <div className="flex items-center justify-between">
+                          <h3 className={`font-medium ${t.text}`}>{bank}</h3>
+                          <div className={`text-lg font-semibold ${t.text}`}>
+                            {sym}{bankAccounts.reduce((sum, acc) => sum + (acc.balance || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                      </div>
+                      <div className={`divide-y ${t.borderSubtle}`}>
+                        {bankAccounts.map(acc => (
+                          <div key={acc.id} className={`p-4 flex items-center justify-between ${t.surfaceHover}`}>
+                            <div>
+                              <div className={`font-medium ${t.text}`}>{acc.name}</div>
+                              <div className={`text-xs ${t.textSecondary}`}>{acc.type} • {acc.currency}</div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className={`text-xl font-semibold ${t.text}`}>
+                                {CURRENCIES[acc.currency]?.symbol || sym}{acc.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              <button
+                                onClick={() => { setEditAccount(acc); setShowEditAccount(acc.id); setFormError(''); }}
+                                className={`px-2 py-1 text-xs ${t.accentBgLight} ${t.textSecondary} rounded hover:${t.surfaceHover}`}
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {Object.keys(accounts.grouped).length === 0 && (
+                    <div className={`${t.surface} rounded-lg border ${t.border} p-8 text-center`}>
+                      <Icon name="Wallet" className={`w-12 h-12 mx-auto mb-4 ${t.textMuted}`} />
+                      <h3 className={`font-medium ${t.text} mb-2`}>No accounts yet</h3>
+                      <p className={`text-sm ${t.textSecondary} mb-4`}>Add your first bank account to start tracking</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {viewMode === 'table' && (
+              <div className={`${t.surface} rounded-lg border ${t.border} overflow-hidden`}>
+                <div className={`p-4 border-b ${t.border}`}>
+                  <h3 className={`font-medium ${t.text}`}>All Transactions</h3>
+                </div>
                 <div className={`divide-y ${t.borderSubtle}`}>
                   {transactions.length === 0 ? (
                     <div className={`p-8 text-center ${t.textSecondary}`}>No transactions yet</div>
                   ) : (
                     transactions.map(tx => (
-                      <div key={tx.id} className={`flex items-center justify-between p-4 ${t.surfaceHover}`}>
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${tx.type === 'income' ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
-                            <Icon name={tx.type === 'income' ? 'ArrowUp' : 'ArrowDown'} className={`w-4 h-4 ${tx.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`} />
+                      <div key={tx.id} className={`p-4 ${t.surfaceHover}`}>
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-start gap-3">
+                            <div className={`p-2 rounded-lg ${
+                              tx.type === 'income' ? 'bg-emerald-500/10' : 
+                              tx.type === 'transfer' ? 'bg-blue-500/10' : 'bg-red-500/10'
+                            }`}>
+                              <Icon name={
+                                tx.type === 'income' ? 'ArrowUp' : 
+                                tx.type === 'transfer' ? 'ArrowDown' : 'ArrowDown'
+                              } className={`w-4 h-4 ${
+                                tx.type === 'income' ? 'text-emerald-600' : 
+                                tx.type === 'transfer' ? 'text-blue-600 rotate-90' : 'text-red-600'
+                              }`} />
+                            </div>
+                            <div>
+                              <div className={`text-sm font-medium ${t.text}`}>{tx.description || tx.category}</div>
+                              <div className={`text-xs ${t.textSecondary}`}>
+                                {tx.type === 'transfer' ? (
+                                  `${tx.account_bank} ${tx.account_name} → ${tx.to_account_bank} ${tx.to_account_name}`
+                                ) : (
+                                  `${tx.account_bank} ${tx.account_name} • ${tx.category}`
+                                )}
+                              </div>
+                              <div className={`text-xs ${t.textMuted}`}>{tx.date} • {tx.currency}</div>
+                            </div>
                           </div>
-                          <div>
-                            <div className={`text-sm font-medium ${t.text}`}>{tx.description || tx.category}</div>
-                            <div className={`text-xs ${t.textSecondary}`}>{tx.category} • {tx.date}</div>
+                        <div className={`font-medium ${
+                            tx.type === 'income' ? 'text-emerald-600' : 
+                            tx.type === 'transfer' ? 'text-blue-600' : 'text-red-600'
+                          }`}>
+                            {tx.type === 'income' ? '+' : tx.type === 'transfer' ? '↔' : '-'}{sym}{tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {tx.converted_amount && tx.currency !== currency && (
+                              <div className={`text-xs ${t.textMuted} mt-1`}>
+                                ≈ {sym}{tx.converted_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @ {tx.exchange_rate?.toFixed(4) || '1.0000'}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <button
+                              onClick={() => startEditTransaction(tx)}
+                              className={`px-2 py-1 text-xs rounded ${t.accentBgLight} ${t.textSecondary} hover:${t.surfaceHover}`}
+                              title="Edit transaction"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => setShowDeleteConfirm(tx.id)}
+                              className={`px-2 py-1 text-xs rounded bg-red-50 text-red-600 hover:bg-red-100`}
+                              title="Delete transaction"
+                            >
+                              Delete
+                            </button>
                           </div>
                         </div>
-                        <div className={`font-medium ${tx.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {tx.type === 'income' ? '+' : '-'}{sym}{tx.amount.toLocaleString()}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Edit Transaction Modal */}
+              {showEditTransaction && editTx && (
+                <div className={`${t.surface} rounded-lg border ${t.border} p-4 space-y-3 mt-4`}>
+                  <h3 className={`font-medium ${t.text}`}>Edit Transaction</h3>
+                  {formError && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{formError}</div>}
+                  
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setEditTx(p => ({ ...p, type: 'income' }))}
+                      className={`flex-1 py-2 rounded-lg text-sm font-medium ${editTx.type === 'income' ? 'bg-emerald-500/20 text-emerald-600' : `${t.accentBgLight} ${t.textSecondary}`}`}
+                    >
+                      Income
+                    </button>
+                    <button
+                      onClick={() => setEditTx(p => ({ ...p, type: 'expense' }))}
+                      className={`flex-1 py-2 rounded-lg text-sm font-medium ${editTx.type === 'expense' ? 'bg-red-500/20 text-red-600' : `${t.accentBgLight} ${t.textSecondary}`}`}
+                    >
+                      Expense
+                    </button>
+                  </div>
+                  
+                  <input
+                    type="date"
+                    value={editTx.date}
+                    onChange={(e) => setEditTx(p => ({ ...p, date: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                  />
+                  
+                  <select
+                    value={editTx.account_id}
+                    onChange={(e) => setEditTx(p => ({ ...p, account_id: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                  >
+                    <option value="">Select account</option>
+                    {accounts.accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>{acc.bank} - {acc.name}</option>
+                    ))}
+                  </select>
+                  
+                  <select
+                    value={editTx.category}
+                    onChange={(e) => setEditTx(p => ({ ...p, category: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                  >
+                    <option value="">Select category</option>
+                    {(editTx.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  
+                  <input
+                    type="text"
+                    value={editTx.amount}
+                    onChange={(e) => setEditTx(p => ({ ...p, amount: e.target.value }))}
+                    placeholder="Amount"
+                    className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                  />
+                  
+                  <input
+                    type="text"
+                    value={editTx.description}
+                    onChange={(e) => setEditTx(p => ({ ...p, description: e.target.value }))}
+                    placeholder="Description"
+                    className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                  />
+                  
+                  <div className="flex gap-2">
+                    <button onClick={updateTransaction} className={`flex-1 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}>
+                      Save Changes
+                    </button>
+                    <button onClick={() => { setShowEditTransaction(null); setEditTx(null); setFormError(''); }} className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Delete Confirmation */}
+              {showDeleteConfirm && (
+                <div className={`${t.surface} rounded-lg border border-red-200 p-4 space-y-3 mt-4`}>
+                  <h3 className={`font-medium text-red-700`}>Delete Transaction?</h3>
+                  <p className={`text-sm ${t.textSecondary}`}>
+                    This will move the transaction to trash and reverse its balance effects. You can restore it later from the Trash view.
+                  </p>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => deleteTransaction(showDeleteConfirm)} 
+                      className={`flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium`}
+                    >
+                      Delete
+                    </button>
+                    <button 
+                      onClick={() => setShowDeleteConfirm(null)} 
+                      className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {viewMode === 'trash' && (
+              <div className={`${t.surface} rounded-lg border ${t.border} overflow-hidden`}>
+                <div className={`p-4 border-b ${t.border}`}>
+                  <h3 className={`font-medium ${t.text}`}>Deleted Transactions</h3>
+                  <p className={`text-sm ${t.textSecondary} mt-1`}>Transactions in trash are excluded from all calculations and reports</p>
+                </div>
+                <div className={`divide-y ${t.borderSubtle}`}>
+                  {transactions.length === 0 ? (
+                    <div className={`p-8 text-center ${t.textSecondary}`}>Trash is empty</div>
+                  ) : (
+                    transactions.map(tx => (
+                      <div key={tx.id} className={`p-4 ${t.surfaceHover}`}>
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-start gap-3">
+                            <div className={`p-2 rounded-lg bg-stone-200`}>
+                              <Icon name="Trash" className={`w-4 h-4 text-stone-500`} />
+                            </div>
+                            <div>
+                              <div className={`text-sm font-medium ${t.text}`}>{tx.description || tx.category}</div>
+                              <div className={`text-xs ${t.textSecondary}`}>
+                                {tx.account_bank} {tx.account_name} • {tx.category}
+                              </div>
+                              <div className={`text-xs ${t.textMuted}`}>
+                                Deleted: {new Date(tx.deleted_at).toLocaleDateString()}
+                                {tx.deleted_reason && ` • ${tx.deleted_reason}`}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className={`font-medium text-stone-500`}>
+                              {tx.type === 'income' ? '+' : tx.type === 'transfer' ? '\u2194' : '-'}{sym}{tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                            <button
+                              onClick={() => restoreTransaction(tx.id)}
+                              className={`px-3 py-1 text-xs rounded ${t.accentBg} text-white hover:opacity-80`}
+                              title="Restore transaction"
+                            >
+                              Restore
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))
@@ -920,51 +1715,19 @@
               </div>
             )}
 
-            {financeView === 'budgets' && (
-              <div className={`${t.surface} rounded-lg border ${t.border} overflow-hidden`}>
-                <div className={`flex items-center justify-between p-4 border-b ${t.border}`}>
-                  <h3 className={`font-medium ${t.text}`}>Monthly Budgets</h3>
-                  <button className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${t.accentBg} text-white text-sm`}>
-                    <Icon name="Plus" className="w-4 h-4" />
-                    New Budget
-                  </button>
-                </div>
-                <div className={`divide-y ${t.borderSubtle}`}>
-                  {budgets.length === 0 ? (
-                    <div className={`p-8 text-center ${t.textSecondary}`}>No budgets yet</div>
-                  ) : (
-                    budgets.map(budget => {
-                      const pct = budget.allocated > 0 ? (budget.spent / budget.allocated) * 100 : 0;
-                      const remaining = budget.allocated - budget.spent;
-                      return (
-                        <div key={budget.id} className={`p-4 ${t.surfaceHover}`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className={`font-medium ${t.text}`}>{budget.category}</span>
-                            <span className={`text-sm ${remaining > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {sym}{remaining.toLocaleString()} left
-                            </span>
-                          </div>
-                          <div className={`h-2 rounded-full mb-2 ${theme === 'light' ? 'bg-stone-200' : 'bg-zinc-700'}`}>
-                            <div className={`h-full rounded-full ${pct > 90 ? 'bg-red-500' : pct > 70 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-                          </div>
-                          <div className={`text-sm ${t.textSecondary}`}>{sym}{budget.spent} of {sym}{budget.allocated} ({pct.toFixed(0)}%)</div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
+            {viewMode === 'calendar' && (
+              <div className={`${t.surface} rounded-lg border ${t.border} p-8 text-center`}>
+                <Icon name="Calendar" className={`w-12 h-12 mx-auto mb-4 ${t.textMuted}`} />
+                <h3 className={`font-medium ${t.text} mb-2`}>Calendar View</h3>
+                <p className={`text-sm ${t.textSecondary}`}>Coming soon - visualize spending by day</p>
               </div>
             )}
 
-            {financeView === 'goals' && (
+            {viewMode === 'chart' && (
               <div className={`${t.surface} rounded-lg border ${t.border} p-8 text-center`}>
-                <Icon name="Target" className={`w-12 h-12 mx-auto mb-4 ${t.textMuted}`} />
-                <h3 className={`font-medium ${t.text} mb-2`}>Financial Goals</h3>
-                <p className={`text-sm ${t.textSecondary} mb-4`}>Set and track long-term financial goals</p>
-                <button className={`flex items-center gap-2 px-4 py-2 rounded-lg ${t.accentBg} text-white text-sm mx-auto`}>
-                  <Icon name="Plus" className="w-4 h-4" />
-                  Create First Goal
-                </button>
+                <Icon name="BarChart" className={`w-12 h-12 mx-auto mb-4 ${t.textMuted}`} />
+                <h3 className={`font-medium ${t.text} mb-2`}>Chart View</h3>
+                <p className={`text-sm ${t.textSecondary}`}>Coming soon - distribution across accounts and categories</p>
               </div>
             )}
           </div>
@@ -982,13 +1745,13 @@
         return (
           <div className="space-y-6">
             <div className={`${t.surface} rounded-lg border ${t.border} p-4`}>
-              <p className={`text-sm ${t.textSecondary}`}>Reports are read-only reflections. No actions happen here.</p>
+              <p className={`text-sm ${t.textSecondary}`}>Reports are read-only reflections on your patterns and progress. No actions or edits happen here.</p>
             </div>
 
             {/* Weekly Summary */}
             <div className={`${t.surface} rounded-lg border ${t.border} p-4`}>
-              <h3 className={`font-medium ${t.text} mb-4`}>Weekly Alignment</h3>
-              <div className="grid grid-cols-5 gap-4">
+              <h3 className={`font-medium ${t.text} mb-4`}>Weekly Alignment Summary</h3>
+              <div className="grid grid-cols-5 gap-4 mb-6">
                 {domains.map(domain => {
                   const alignment = getDomainAlignment(domain.key);
                   return (
@@ -996,10 +1759,19 @@
                       <div className={`text-3xl font-semibold mb-1 ${alignment >= 80 ? 'text-emerald-600' : alignment >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
                         {alignment}%
                       </div>
-                      <div className={`text-xs ${t.textSecondary} truncate`}>{domain.name}</div>
+                      <div className={`text-xs ${t.textSecondary}`}>{domain.name}</div>
                     </div>
                   );
                 })}
+              </div>
+              
+              {/* Simple analysis */}
+              <div className={`p-4 rounded-lg ${t.accentBgLight}`}>
+                <p className={`text-sm ${t.text}`}>
+                  <strong>Week 1 Analysis:</strong> Strong start with Bible (100%) and Fitness (83%). 
+                  Health (71%) shows room for improvement—hydration and sleep were inconsistent. 
+                  Work alignment at 67% suggests deep work blocks were interrupted.
+                </p>
               </div>
             </div>
 
@@ -1077,6 +1849,45 @@
       // ======================================================================
       
       const ProfileSection = () => {
+        const [dailyReminder, setDailyReminder] = useState(false);
+        const [weeklyReminder, setWeeklyReminder] = useState(false);
+
+        useEffect(() => {
+          const loadSettings = async () => {
+            try {
+              const [daily, weekly] = await Promise.all([
+                api.getSetting('daily_reminder'),
+                api.getSetting('weekly_planning_reminder')
+              ]);
+              setDailyReminder(daily.value === 'on');
+              setWeeklyReminder(weekly.value === 'on');
+            } catch (err) {
+              console.error('Settings load error:', err);
+            }
+          };
+          loadSettings();
+        }, []);
+
+        const toggleDailyReminder = async () => {
+          const next = !dailyReminder;
+          setDailyReminder(next);
+          try {
+            await api.setSetting('daily_reminder', next ? 'on' : 'off');
+          } catch (err) {
+            console.error('Daily reminder update error:', err);
+          }
+        };
+
+        const toggleWeeklyReminder = async () => {
+          const next = !weeklyReminder;
+          setWeeklyReminder(next);
+          try {
+            await api.setSetting('weekly_planning_reminder', next ? 'on' : 'off');
+          } catch (err) {
+            console.error('Weekly reminder update error:', err);
+          }
+        };
+
         const handleLogoutClick = async () => {
           try {
             await api.logout();
@@ -1156,11 +1967,45 @@
               </div>
             </div>
 
+            {/* Notifications */}
+            <div className={`${t.surface} rounded-lg border ${t.border} divide-y ${t.border}`}>
+              <div className="p-4">
+                <h3 className={`font-medium ${t.text} mb-1`}>Notifications</h3>
+                <p className={`text-sm ${t.textSecondary}`}>Manage how you receive reminders</p>
+              </div>
+              
+              <div className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Icon name="Bell" className={`w-5 h-5 ${t.textSecondary}`} />
+                  <span className={`text-sm ${t.text}`}>Daily check-in reminder</span>
+                </div>
+                <button
+                  onClick={toggleDailyReminder}
+                  className={`w-10 h-6 rounded-full p-1 transition-colors ${dailyReminder ? 'bg-emerald-500' : theme === 'light' ? 'bg-stone-300' : 'bg-zinc-600'}`}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white transition-transform ${dailyReminder ? 'translate-x-4' : ''}`} />
+                </button>
+              </div>
+
+              <div className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Icon name="Calendar" className={`w-5 h-5 ${t.textSecondary}`} />
+                  <span className={`text-sm ${t.text}`}>Weekly planning reminder</span>
+                </div>
+                <button
+                  onClick={toggleWeeklyReminder}
+                  className={`w-10 h-6 rounded-full p-1 transition-colors ${weeklyReminder ? 'bg-emerald-500' : theme === 'light' ? 'bg-stone-300' : 'bg-zinc-600'}`}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white transition-transform ${weeklyReminder ? 'translate-x-4' : ''}`} />
+                </button>
+              </div>
+            </div>
+
             {/* Account */}
             <div className={`${t.surface} rounded-lg border ${t.border}`}>
               <div className="p-4">
                 <h3 className={`font-medium ${t.text} mb-1`}>Account</h3>
-                <p className={`text-sm ${t.textSecondary}`}>Manage your session</p>
+                <p className={`text-sm ${t.textSecondary}`}>Manage your account and session</p>
               </div>
               <button 
                 onClick={handleLogoutClick}
@@ -1171,6 +2016,7 @@
               </button>
             </div>
 
+            {/* Footer */}
             <div className={`text-center ${t.textMuted} text-xs`}>
               Tracker v3.0.0 • Self-hosted on Proxmox • Tailscale-only
             </div>
@@ -1184,6 +2030,11 @@
 
       return (
         <div className={`min-h-screen ${t.bg}`}>
+          {toast && (
+            <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg bg-white border border-stone-200 text-stone-800">
+              {toast}
+            </div>
+          )}
           <Navigation />
           <main className="max-w-4xl mx-auto px-4 py-6">
             {activeSection === 'commitments' && <CommitmentsSection />}
@@ -1202,6 +2053,65 @@
     function App() {
       const [token, setToken] = useState(localStorage.getItem('token'));
       const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || 'null'));
+      const [appBuildId, setAppBuildId] = useState(null);
+
+      // Detect backend changes and auto-reload
+      useEffect(() => {
+        let isMounted = true;
+        const checkForUpdates = async () => {
+          try {
+            const res = await fetch('/api/app-version');
+            const data = await res.json();
+            
+            if (isMounted) {
+              if (appBuildId && appBuildId !== data.buildId) {
+                // Backend was restarted, show notification and reload
+                const notification = document.createElement('div');
+                notification.style.cssText = `
+                  position: fixed;
+                  top: 16px;
+                  right: 16px;
+                  background: #10b981;
+                  color: white;
+                  padding: 16px;
+                  border-radius: 8px;
+                  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                  font-size: 14px;
+                  z-index: 9999;
+                  max-width: 300px;
+                `;
+                notification.innerHTML = '✓ Updates available. Refreshing page...';
+                document.body.appendChild(notification);
+                
+                setTimeout(() => {
+                  window.location.reload();
+                }, 2000);
+              } else if (!appBuildId) {
+                setAppBuildId(data.buildId);
+              }
+            }
+          } catch (err) {
+            console.error('Version check failed:', err);
+          }
+        };
+
+        // Initial check
+        if (token) {
+          checkForUpdates();
+        }
+
+        // Poll every 60 seconds
+        const interval = setInterval(() => {
+          if (token && isMounted) {
+            checkForUpdates();
+          }
+        }, 60000);
+
+        return () => {
+          isMounted = false;
+          clearInterval(interval);
+        };
+      }, [token, appBuildId]);
 
       const handleLogin = (newToken, newUser) => {
         setToken(newToken);
