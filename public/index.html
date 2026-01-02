@@ -4,21 +4,66 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tracker v3.0</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='none'%3E%3Ccircle cx='32' cy='32' r='30' fill='%230f172a'/%3E%3Cpath d='M32 12v28' stroke='%23e2e8f0' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M26 22h12' stroke='%23e2e8f0' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M24 40c0 4.418 3.582 8 8 8s8-3.582 8-8' stroke='%23e2e8f0' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M20 48c4 2.5 9 4 12 4s8-1.5 12-4' stroke='%2338bdf8' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M16 52c5 3 10 4.5 16 4.5s11-1.5 16-4.5' stroke='%2338bdf8' stroke-width='3' stroke-linecap='round' opacity='.7'/%3E%3C/svg%3E">
+  <script src="/vendor/tailwind.js"></script>
+  <script src="/vendor/react.min.js"></script>
+  <script src="/vendor/react-dom.min.js"></script>
+  <script src="/vendor/babel.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
     .scrollbar-hide::-webkit-scrollbar { display: none; }
     .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    /* Ensure select options and inputs have proper contrast in dark mode */
+    select, input, textarea {
+      color: currentColor;
+    }
+    select option {
+      color: #000;
+      background-color: #fff;
+    }
+    @media (prefers-color-scheme: dark) {
+      select option {
+        color: #fff;
+        background-color: #27272a;
+      }
+    }
+    @keyframes anchor-bob {
+      0% { transform: translateY(0); }
+      50% { transform: translateY(3px); }
+      100% { transform: translateY(0); }
+    }
+    .anchor-logo {
+      animation: anchor-bob 2.6s ease-in-out infinite;
+    }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #fafaf9; font-family: system-ui, sans-serif;">
+      <div style="text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 1rem;">⏳</div>
+        <div style="font-size: 1.25rem; font-weight: 600; color: #1c1917; margin-bottom: 0.5rem;">Loading Tracker...</div>
+        <div style="font-size: 0.875rem; color: #78716c;">If this message persists, check browser console for errors</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Error handling for CDN resources
+    window.addEventListener('error', function(e) {
+      if (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK') {
+        console.error('Failed to load resource:', e.target.src || e.target.href);
+        document.getElementById('root').innerHTML = '<div style="padding: 2rem; max-width: 600px; margin: 2rem auto; background: #fee2e2; border: 2px solid #dc2626; border-radius: 0.5rem; font-family: system-ui;"><h2 style="color: #dc2626; margin-bottom: 1rem;">⚠️ Loading Error</h2><p style="margin-bottom: 0.5rem;">Failed to load: <code>' + (e.target.src || e.target.href) + '</code></p><p style="color: #78716c; font-size: 0.875rem;">Check your internet connection and browser console for details.</p></div>';
+      }
+    }, true);
+  </script>
   <script type="text/babel">
+    /* 
+     * NOTE: VS Code's TypeScript parser may show false positive errors in this file.
+     * This is JSX code transpiled by Babel at runtime, not TypeScript.
+     * The code runs perfectly in all modern browsers.
+     */
     const { useState, useEffect } = React;
 
     // ============================================================================
@@ -80,11 +125,6 @@
         updateAccount: (id, data) => request('PUT', `/accounts/${id}`, data),
         deleteAccount: (id) => request('DELETE', `/accounts/${id}`),
         
-        // Income
-        getIncome: (startDate, endDate, accountId) => request('GET', `/income?start_date=${startDate}&end_date=${endDate}${accountId ? `&account_id=${accountId}` : ''}`),
-        createIncome: (data) => request('POST', '/income', data),
-        deleteIncome: (id) => request('DELETE', `/income/${id}`),
-        
         // Transactions
         getTransactions: (limit = 50, offset = 0) => request('GET', `/transactions?limit=${limit}&offset=${offset}`),
         createTransaction: (data) => request('POST', '/transactions', data),
@@ -93,25 +133,23 @@
         restoreTransaction: (id) => request('POST', `/transactions/${id}/restore`),
         getTrash: (limit = 50, offset = 0) => request('GET', `/transactions/trash?limit=${limit}&offset=${offset}`),
         
-        // Budgets
-        getBudgets: () => request('GET', '/budgets'),
-        createBudget: (data) => request('POST', '/budgets', data),
-        deleteBudget: (id) => request('DELETE', `/budgets/${id}`),
-        
-        // Financial Goals
-        getFinancialGoals: () => request('GET', '/financial-goals'),
-        createFinancialGoal: (data) => request('POST', '/financial-goals', data),
-        updateFinancialGoal: (id, data) => request('PUT', `/financial-goals/${id}`, data),
-        
         // Exchange Rates
         getExchangeRate: (from, to) => request('GET', `/exchange-rate?from=${from}&to=${to}`),
         
         // Reports
         getNetWorth: () => request('GET', '/reports/net-worth'),
-        getIncomeSummary: (year, month) => request('GET', `/reports/income-summary?year=${year}&month=${month}`),
         getWeeklyAlignment: (weekStart) => request('GET', `/reports/weekly-alignment${weekStart ? `?week_start=${weekStart}` : ''}`),
         getMonthlySummary: (year, month) => request('GET', `/reports/monthly-summary?year=${year}&month=${month}`),
         getStreak: () => request('GET', '/reports/streak'),
+  getStreakCurrent: () => request('GET', '/checkins/streak'),
+        
+  // Weekly Intentions
+  getWeeklyIntention: (weekStart) => request('GET', `/weekly-intentions/${weekStart}`),
+  saveWeeklyIntention: (weekStart, non_negotiables, intentional_skips) => request('POST', '/weekly-intentions', { weekStart, non_negotiables, intentional_skips }),
+        
+  // Daily Reflections
+  getDailyReflection: (date) => request('GET', `/reflections/${date}`),
+  saveDailyReflection: (date, reflection) => request('POST', '/reflections', { date, reflection }),
 
         // Settings key/value
         getSetting: (key) => request('GET', `/settings/${key}`),
@@ -209,7 +247,7 @@
         accent: 'text-slate-400',
         accentBg: 'bg-slate-500',
         accentBgLight: 'bg-slate-800',
-        input: 'bg-zinc-700 border-zinc-600',
+        input: 'bg-zinc-700 border-zinc-600 text-zinc-100',
       }
     })[theme];
 
@@ -240,6 +278,11 @@
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     };
 
+    const formatFullDate = (dateStr) => {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    };
+
     // ========================================================================
     // LOGIN SCREEN
     // ========================================================================
@@ -251,6 +294,17 @@
       const [displayName, setDisplayName] = useState('');
       const [error, setError] = useState('');
       const [loading, setLoading] = useState(false);
+      const [showForgotPassword, setShowForgotPassword] = useState(false);
+      const [theme, setTheme] = useState('light');
+
+      const isDark = theme === 'dark';
+      const bg = isDark ? 'bg-zinc-900' : 'bg-stone-50';
+      const surface = isDark ? 'bg-zinc-800' : 'bg-white';
+      const border = isDark ? 'border-zinc-700' : 'border-stone-200';
+      const text = isDark ? 'text-zinc-100' : 'text-stone-900';
+      const textSecondary = isDark ? 'text-zinc-400' : 'text-stone-600';
+      const inputBg = isDark ? 'bg-zinc-700 text-zinc-100' : 'bg-white text-stone-900';
+      const inputBorder = isDark ? 'border-zinc-600 focus:border-slate-500' : 'border-stone-200 focus:border-slate-400';
 
       const api = createApi(null);
 
@@ -276,69 +330,136 @@
       };
 
       return (
-        <div className="min-h-screen bg-stone-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm">
-            <div className="text-center mb-8">
-              <h1 className="text-2xl font-semibold text-stone-900">Tracker</h1>
-              <p className="text-stone-500 text-sm mt-1">Personal operating system</p>
-            </div>
-            
-            <div className="bg-white rounded-lg border border-stone-200 p-6">
-              <h2 className="text-lg font-medium text-stone-900 mb-6">{isRegister ? 'Create Account' : 'Sign In'}</h2>
-              
-              {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
-              
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm text-stone-600 mb-1.5">Username</label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full px-3 py-2 border border-stone-200 rounded-lg text-stone-900 focus:outline-none focus:border-slate-400"
-                    required
-                  />
-                </div>
-                
-                {isRegister && (
-                  <div>
-                    <label className="block text-sm text-stone-600 mb-1.5">Display Name</label>
-                    <input
-                      type="text"
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      className="w-full px-3 py-2 border border-stone-200 rounded-lg text-stone-900 focus:outline-none focus:border-slate-400"
-                      required
-                    />
+        <div className={`min-h-screen ${bg} flex flex-col`}>
+          {/* Theme Toggle */}
+          <div className="absolute top-4 right-4 z-10">
+            <button
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+              className={`p-2 rounded-lg ${isDark ? 'bg-zinc-700 hover:bg-zinc-600' : 'bg-stone-200 hover:bg-stone-300'}`}
+            >
+              <Icon name={theme === 'light' ? 'Moon' : 'Sun'} className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Main */}
+          <div className="flex-1 flex items-center justify-center p-4">
+            <div className="w-full max-w-sm">
+              <div className="text-center mb-12">
+                <h1 className={`text-5xl font-bold ${text} mb-2 flex items-center justify-center gap-2`}>
+                  <span aria-hidden="true" className="inline-flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" className="h-10 w-10 anchor-logo" fill="none">
+                      <circle cx="32" cy="32" r="30" fill="#0f172a" />
+                      <path d="M32 12v28" stroke="#e2e8f0" strokeWidth="4" strokeLinecap="round" />
+                      <path d="M26 22h12" stroke="#e2e8f0" strokeWidth="4" strokeLinecap="round" />
+                      <path d="M24 40c0 4.418 3.582 8 8 8s8-3.582 8-8" stroke="#e2e8f0" strokeWidth="4" strokeLinecap="round" />
+                      <path d="M20 48c4 2.5 9 4 12 4s8-1.5 12-4" stroke="#38bdf8" strokeWidth="3" strokeLinecap="round" />
+                      <path d="M16 52c5 3 10 4.5 16 4.5s11-1.5 16-4.5" stroke="#38bdf8" strokeWidth="3" strokeLinecap="round" opacity=".7" />
+                    </svg>
+                  </span>
+                  <span>Anchor</span>
+                </h1>
+                <p className={`${textSecondary} text-sm`}>Personal operating system for habits and finance</p>
+              </div>
+
+              {!showForgotPassword ? (
+                <div className={`${surface} rounded-lg border ${border} p-8 shadow-lg`}>
+                  {error && (
+                    <div className={`mb-4 p-3 rounded-lg text-sm ${isDark ? 'bg-red-900/30 border border-red-700/50 text-red-300' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                      {error}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                      <label className={`block text-sm font-medium ${text} mb-2`}>Username</label>
+                      <input
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        placeholder="username or email@domain.com"
+                        className={`w-full px-4 py-2.5 rounded-lg border ${inputBorder} ${inputBg} focus:outline-none`}
+                        required
+                      />
+                    </div>
+
+                    {isRegister && (
+                      <div>
+                        <label className={`block text-sm font-medium ${text} mb-2`}>Display Name</label>
+                        <input
+                          type="text"
+                          value={displayName}
+                          onChange={(e) => setDisplayName(e.target.value)}
+                          placeholder="Your full name"
+                          className={`w-full px-4 py-2.5 rounded-lg border ${inputBorder} ${inputBg} focus:outline-none`}
+                          required
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className={`block text-sm font-medium ${text} mb-2`}>Password</label>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className={`w-full px-4 py-2.5 rounded-lg border ${inputBorder} ${inputBg} focus:outline-none`}
+                        required
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-2.5 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-medium disabled:opacity-50"
+                    >
+                      {loading ? 'Loading...' : isRegister ? 'Create Account' : 'Sign In'}
+                    </button>
+                  </form>
+
+                  <div className="mt-6 space-y-3 text-sm">
+                    {!isRegister && (
+                      <button
+                        onClick={() => setShowForgotPassword(true)}
+                        className={`w-full text-center ${isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-600 hover:text-slate-700'}`}
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                    <div className={`text-center ${textSecondary}`}>
+                      {isRegister ? 'Already have an account?' : "Don't have an account?"}
+                      <button
+                        onClick={() => { setIsRegister(!isRegister); setError(''); setShowForgotPassword(false); }}
+                        className={`ml-1.5 font-medium ${isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-600 hover:text-slate-700'}`}
+                      >
+                        {isRegister ? 'Sign In' : 'Register'}
+                      </button>
+                    </div>
                   </div>
-                )}
-                
-                <div>
-                  <label className="block text-sm text-stone-600 mb-1.5">Password</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-3 py-2 border border-stone-200 rounded-lg text-stone-900 focus:outline-none focus:border-slate-400"
-                    required
-                  />
                 </div>
-                
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-2.5 bg-slate-600 text-white rounded-lg font-medium hover:bg-slate-700 disabled:opacity-50"
-                >
-                  {loading ? 'Loading...' : isRegister ? 'Create Account' : 'Sign In'}
-                </button>
-              </form>
-              
-              <p className="text-center text-stone-500 text-sm mt-4">
-                {isRegister ? 'Already have an account?' : "Don't have an account?"}
-                <button onClick={() => { setIsRegister(!isRegister); setError(''); }} className="text-slate-600 ml-1.5 font-medium hover:underline">
-                  {isRegister ? 'Sign In' : 'Register'}
-                </button>
-              </p>
+              ) : (
+                <div className={`${surface} rounded-lg border ${border} p-8 shadow-lg`}>
+                  <h2 className={`text-xl font-semibold ${text} mb-4`}>Reset Password</h2>
+                  <p className={`${textSecondary} text-sm mb-6`}>
+                    Contact your administrator to reset your password or create a new account.
+                  </p>
+                  <button
+                    onClick={() => { setShowForgotPassword(false); setError(''); }}
+                    className="w-full py-2.5 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-medium"
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className={`border-t ${border} py-6 px-4`}>
+            <div className={`text-center ${textSecondary} text-xs space-y-1`}>
+              <div>Built with ❤️ using Proxmox</div>
+              <div>🔒 Secured by Tailscale</div>
+              <div className={`${isDark ? 'text-zinc-500' : 'text-stone-400'}`}>Anchor v3.0.0</div>
             </div>
           </div>
         </div>
@@ -360,26 +481,28 @@
       const [checkins, setCheckins] = useState({});
       const [accounts, setAccounts] = useState({ accounts: [], grouped: {} });
       const [transactions, setTransactions] = useState([]);
-      const [budgets, setBudgets] = useState([]);
-      const [financialGoals, setFinancialGoals] = useState([]);
       const [weeklyAlignment, setWeeklyAlignment] = useState({});
-      const [monthlySummary, setMonthlySummary] = useState(null);
       
       // UI state
       const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
       const [expandedDomain, setExpandedDomain] = useState(null);
       const [showAddCommitment, setShowAddCommitment] = useState(null);
       const [showAddTransaction, setShowAddTransaction] = useState(false);
-      const [showAddBudget, setShowAddBudget] = useState(false);
       const [newCommitmentText, setNewCommitmentText] = useState('');
       const [newCommitmentFreq, setNewCommitmentFreq] = useState('daily');
       const [toast, setToast] = useState(null);
+        const [streak, setStreak] = useState(0);
+        const [weeklyIntention, setWeeklyIntention] = useState(null);
+        const [showWeeklyPlanning, setShowWeeklyPlanning] = useState(false);
+        const [nonNegotiables, setNonNegotiables] = useState('');
+        const [intentionalSkips, setIntentionalSkips] = useState('');
+        const [dailyReflection, setDailyReflection] = useState('');
+        const [isReflectionSaving, setIsReflectionSaving] = useState(false);
       
       const api = createApi(token);
       const t = getTokens(theme);
       const weekStart = getWeekStart(selectedDate);
       const weekDates = getWeekDates(weekStart);
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const currency = user.default_currency || 'USD';
       const sym = CURRENCIES[currency]?.symbol || '$';
 
@@ -387,27 +510,35 @@
       useEffect(() => {
         loadData();
       }, []);
-
-      // Load trash when switching to trash view
       useEffect(() => {
-        if (activeSection === 'finance' && viewMode === 'trash') {
-          loadTrash();
-        } else if (activeSection === 'finance' && viewMode === 'table') {
-          loadTransactions();
-        }
-      }, [viewMode]);
+        loadData();
+      }, [weekStart, selectedDate]);
+
+      // Refresh daily reflection when date changes
+      useEffect(() => {
+        const loadReflection = async () => {
+          try {
+            const reflectionRes = await api.getDailyReflection(selectedDate);
+            setDailyReflection(reflectionRes?.reflection || '');
+          } catch (err) {
+            console.error('Reflection load error:', err);
+          }
+        };
+        loadReflection();
+      }, [selectedDate]);
 
       const loadData = async () => {
         try {
-          const [domainsRes, commitmentsRes, checkinsRes, accountsRes, txRes, budgetsRes, goalsRes, alignmentRes] = await Promise.all([
+          const [domainsRes, commitmentsRes, checkinsRes, accountsRes, txRes, alignmentRes, streakRes, weeklyRes, reflectionRes] = await Promise.all([
             api.getDomains(),
             api.getCommitments(),
             api.getCheckins(weekDates[0], weekDates[6]),
             api.getAccounts(),
             api.getTransactions(50),
-            api.getBudgets(),
-            api.getFinancialGoals(),
             api.getWeeklyAlignment(weekStart),
+            api.getStreakCurrent(),
+            api.getWeeklyIntention(weekStart),
+            api.getDailyReflection(selectedDate),
           ]);
           
           setDomains(domainsRes);
@@ -415,36 +546,31 @@
           setCheckins(checkinsRes.byDate || {});
           setAccounts(accountsRes);
           setTransactions(txRes.transactions || []);
-          setBudgets(budgetsRes);
-          setFinancialGoals(goalsRes);
           setWeeklyAlignment(alignmentRes.alignment || {});
+
+          setStreak(streakRes.streak || 0);
+          setWeeklyIntention(weeklyRes);
+          setNonNegotiables(weeklyRes?.non_negotiables || '');
+          setIntentionalSkips(weeklyRes?.intentional_skips || '');
+          setDailyReflection(reflectionRes?.reflection || '');
+          
+          // Show weekly planning modal on Monday if first visit of week
+          const today = new Date();
+          const isMonday = today.getDay() === 1;
+          const hasIntention = weeklyRes?.non_negotiables || weeklyRes?.intentional_skips;
+          if (isMonday && !hasIntention) {
+            setShowWeeklyPlanning(true);
+          }
         } catch (err) {
           console.error('Load error:', err);
           setToast(err.message || 'Failed to load data');
         }
       };
 
-      const loadTransactions = async () => {
-        try {
-          const txRes = await api.getTransactions(50);
-          setTransactions(txRes.transactions || []);
-        } catch (err) {
-          console.error('Load transactions error:', err);
-        }
-      };
-
-      const loadTrash = async () => {
-        try {
-          const trashRes = await api.getTrash(50);
-          setTransactions(trashRes.transactions || []);
-        } catch (err) {
-          console.error('Load trash error:', err);
-        }
-      };
-
-      const showToast = (message) => {
-        setToast(message);
-        setTimeout(() => setToast(null), 3000);
+      const shiftSelectedDate = (delta) => {
+        const current = new Date(selectedDate);
+        current.setDate(current.getDate() + delta);
+        setSelectedDate(current.toISOString().split('T')[0]);
       };
 
       // Update theme
@@ -579,9 +705,64 @@
       const CommitmentsSection = () => {
         const todayCheckins = checkins[selectedDate] || {};
         const totalCommitments = Object.values(commitments).flat().length;
+        const isSelectedToday = selectedDate === new Date().toISOString().split('T')[0];
         
         return (
           <div className="space-y-6">
+            {/* Weekly Planning Ritual Modal */}
+            {showWeeklyPlanning && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className={`${t.surface} rounded-lg border ${t.border} max-w-md w-full`}>
+                  <div className={`p-6 border-b ${t.border}`}>
+                    <h2 className={`text-xl font-semibold ${t.text}`}>Weekly Planning</h2>
+                    <p className={`text-sm ${t.textSecondary} mt-1`}>Week of {formatDate(weekStart)}</p>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <div>
+                      <label className={`block text-sm font-medium ${t.text} mb-2`}>What are your 3 non-negotiables this week?</label>
+                      <textarea
+                        value={nonNegotiables}
+                        onChange={(e) => setNonNegotiables(e.target.value)}
+                        placeholder="e.g., Exercise daily, Sleep 8 hours, Complete project"
+                        className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text} text-sm focus:outline-none h-24`}
+                      />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium ${t.text} mb-2`}>What will you intentionally skip?</label>
+                      <textarea
+                        value={intentionalSkips}
+                        onChange={(e) => setIntentionalSkips(e.target.value)}
+                        placeholder="e.g., Social media on weekdays, Late night snacking"
+                        className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text} text-sm focus:outline-none h-24`}
+                      />
+                    </div>
+                  </div>
+                  <div className={`p-6 border-t ${t.border} flex gap-2`}>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await api.saveWeeklyIntention(weekStart, nonNegotiables, intentionalSkips);
+                          setShowWeeklyPlanning(false);
+                          showToast('Weekly plan saved');
+                        } catch (err) {
+                          showToast(err.message || 'Failed to save');
+                        }
+                      }}
+                      className={`flex-1 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}
+                    >
+                      Save Plan
+                    </button>
+                    <button
+                      onClick={() => setShowWeeklyPlanning(false)}
+                      className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Getting Started Message */}
             {totalCommitments === 0 && (
               <div className={`${t.surface} rounded-lg border ${t.border} p-6`}>
@@ -604,57 +785,43 @@
               </div>
             )}
 
-            {/* Week Header */}
+            {/* Day Header */}
             <div className={`${t.surface} rounded-lg border ${t.border} p-4`}>
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between">
                 <div>
-                  <h2 className={`text-lg font-semibold ${t.text}`}>
-                    Week of {formatDate(weekStart)}
+                  <div className={`text-xs uppercase tracking-wide ${t.textSecondary}`}>
+                    {isSelectedToday ? 'Today' : 'Selected Day'}
+                  </div>
+                  <h2 className={`text-2xl font-semibold ${t.text} mt-1`}>
+                    {formatFullDate(selectedDate)}
                   </h2>
-                  <p className={`text-sm ${t.textSecondary}`}>Weekly planning and daily check-ins</p>
+                  <p className={`text-sm ${t.textSecondary} mt-1`}>Weekly planning and daily check-ins</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button className={`p-2 rounded-lg ${t.surfaceHover} ${t.textSecondary}`}>
+                  <button
+                    onClick={() => shiftSelectedDate(-1)}
+                    className={`p-2 rounded-lg ${t.surfaceHover} ${t.textSecondary}`}
+                    title="Previous day"
+                  >
                     <Icon name="ChevronLeft" className="w-5 h-5" />
                   </button>
-                  <button className={`p-2 rounded-lg ${t.surfaceHover} ${t.textSecondary}`}>
+                  <button
+                    onClick={() => shiftSelectedDate(1)}
+                    className={`p-2 rounded-lg ${t.surfaceHover} ${t.textSecondary}`}
+                    title="Next day"
+                  >
                     <Icon name="ChevronRight" className="w-5 h-5" />
                   </button>
                 </div>
               </div>
+            </div>
 
-              {/* Day Selector */}
-              <div className="flex gap-1">
-                {weekDates.map((date, i) => {
-                  const dayCheckins = checkins[date] || {};
-                  const allCommitments = Object.values(commitments).flat();
-                  const completedCount = Object.values(dayCheckins).filter(v => v === 'done').length;
-                  const isSelected = date === selectedDate;
-                  const isToday = date === new Date().toISOString().split('T')[0];
-                  const isPast = new Date(date) < new Date(selectedDate);
-                  
-                  return (
-                    <button
-                      key={date}
-                      onClick={() => setSelectedDate(date)}
-                      className={`flex-1 py-2 px-1 rounded-lg text-center transition-colors ${
-                        isSelected 
-                          ? `${t.accentBg} text-white` 
-                          : `${t.surfaceHover} ${t.textSecondary}`
-                      }`}
-                    >
-                      <div className="text-xs font-medium">{dayNames[new Date(date).getDay()]}</div>
-                      <div className={`text-lg font-semibold ${isSelected ? 'text-white' : t.text}`}>
-                        {new Date(date).getDate()}
-                      </div>
-                      {isPast && (
-                        <div className={`text-xs ${isSelected ? 'text-white/70' : t.textMuted}`}>
-                          {completedCount}/{allCommitments.length}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
+            {/* Streak badge */}
+            <div className={`flex items-center gap-2 p-3 rounded-lg ${t.accentBgLight}`}>
+              <Icon name="TrendingUp" className={`w-5 h-5 ${t.accent}`} />
+              <div>
+                <div className={`text-sm font-semibold ${t.text}`}>{streak} day streak</div>
+                <div className={`text-xs ${t.textSecondary}`}>Consecutive days with check-ins</div>
               </div>
             </div>
 
@@ -667,7 +834,6 @@
                 
                 return (
                   <div key={domain.key} className={`${t.surface} rounded-lg border ${t.border} overflow-hidden`}>
-                    {/* Domain Header */}
                     <button
                       onClick={() => setExpandedDomain(isExpanded ? null : domain.key)}
                       className={`w-full flex items-center justify-between p-4 ${t.surfaceHover} transition-colors`}
@@ -677,133 +843,102 @@
                           <Icon name={DOMAIN_ICONS[domain.key] || 'Target'} className={`w-5 h-5 ${t.accent}`} />
                         </div>
                         <div className="text-left">
-                          <h3 className={`font-medium ${t.text}`}>{domain.name}</h3>
-                          <p className={`text-sm ${t.textSecondary}`}>
-                            {domainCommitments.length === 0 ? 'No commitments yet' : `${domainCommitments.length} commitments`}
-                          </p>
+                          <div className={`text-sm font-semibold ${t.text}`}>{domain.name}</div>
+                          <div className={`text-xs ${t.textSecondary}`}>{alignment}% alignment</div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        {domainCommitments.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <div className={`w-24 h-2 rounded-full ${theme === 'light' ? 'bg-stone-200' : 'bg-zinc-700'}`}>
-                              <div 
-                                className={`h-full rounded-full transition-all ${
-                                  alignment >= 80 ? 'bg-emerald-500' : 
-                                  alignment >= 50 ? 'bg-amber-500' : 'bg-red-500'
-                                }`}
-                                style={{ width: `${alignment}%` }}
-                              />
-                            </div>
-                            <span className={`text-sm font-medium ${t.textSecondary}`}>{alignment}%</span>
-                          </div>
-                        )}
-                        <Icon 
-                          name={isExpanded ? 'ChevronDown' : 'ChevronRight'} 
-                          className={`w-5 h-5 ${t.textMuted}`} 
-                        />
-                      </div>
+                      <Icon
+                        name="ChevronDown"
+                        className={`w-3.5 h-3.5 ${t.textMuted} ml-2 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                        aria-hidden="true"
+                      />
                     </button>
-
-                    {/* Expanded Commitments */}
                     {isExpanded && (
-                      <div className={`border-t ${t.border}`}>
-                        {domainCommitments.length === 0 ? (
-                          <div className={`p-8 text-center`}>
-                            <Icon name={DOMAIN_ICONS[domain.key] || 'Target'} className={`w-12 h-12 mx-auto mb-3 ${t.textMuted}`} />
-                            <p className={`text-sm ${t.textSecondary} mb-4`}>
-                              No commitments in {domain.name} yet. Add your first commitment to start tracking.
-                            </p>
-                          </div>
-                        ) : (
-                          domainCommitments.map(commitment => {
-                          const status = todayCheckins[commitment.id];
-                          return (
-                            <div key={commitment.id} className={`flex items-center justify-between p-4 border-b last:border-b-0 ${t.borderSubtle}`}>
-                              <div className="flex items-center gap-3 flex-1 min-w-0">
-                                <span className={`text-sm ${t.text} truncate`}>{commitment.text}</span>
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${t.accentBgLight} ${t.textSecondary} shrink-0`}>
-                                  {commitment.frequency}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1 ml-2">
-                                <button
-                                  onClick={() => toggleCheckin(commitment.id, 'done')}
-                                  className={`p-2 rounded-lg transition-colors ${
-                                    status === 'done' ? 'bg-emerald-500/20 text-emerald-600' : `${t.surfaceHover} ${t.textMuted}`
-                                  }`}
-                                  title="Completed"
-                                >
-                                  <Icon name="Check" className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => toggleCheckin(commitment.id, 'skip')}
-                                  className={`p-2 rounded-lg transition-colors ${
-                                    status === 'skip' ? 'bg-amber-500/20 text-amber-600' : `${t.surfaceHover} ${t.textMuted}`
-                                  }`}
-                                  title="Intentional Skip"
-                                >
-                                  <Icon name="Minus" className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => toggleCheckin(commitment.id, 'miss')}
-                                  className={`p-2 rounded-lg transition-colors ${
-                                    status === 'miss' ? 'bg-red-500/20 text-red-600' : `${t.surfaceHover} ${t.textMuted}`
-                                  }`}
-                                  title="Missed"
-                                >
-                                  <Icon name="X" className="w-4 h-4" />
-                                </button>
-                              </div>
+                      <div className={`border-t ${t.border} p-4 space-y-4`}>
+                        <div className="space-y-3">
+                          {domainCommitments.length === 0 && (
+                            <div className={`${t.accentBgLight} rounded-lg p-3 text-sm ${t.textSecondary}`}>
+                              No commitments yet. Add your first one below.
                             </div>
-                          );
-                        })
-                        )}
-                        
-                        {/* Add commitment */}
-                        {showAddCommitment === domain.key ? (
-                          <div className={`p-4 border-t ${t.border} space-y-3`}>
-                            <input
-                              type="text"
-                              value={newCommitmentText}
-                              onChange={(e) => setNewCommitmentText(e.target.value)}
-                              placeholder="New commitment..."
-                              className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text} focus:outline-none`}
-                              autoFocus
-                            />
-                            <div className="flex items-center gap-2">
+                          )}
+                          {domainCommitments.map(c => {
+                            const status = todayCheckins[c.id];
+                            const isDone = status === 'done';
+                            const isSkip = status === 'skip';
+                            const isMiss = status === 'miss';
+                            return (
+                              <div key={c.id} className={`flex items-center justify-between p-3 rounded-lg border ${t.border}`}>
+                                <div>
+                                  <div className={`text-sm font-medium ${t.text}`}>{c.text}</div>
+                                  <div className={`text-xs ${t.textSecondary}`}>{c.frequency}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => toggleCheckin(c.id, 'done')}
+                                    className={`px-2 py-1 rounded text-xs font-medium ${isDone ? 'bg-emerald-500 text-white' : `${t.surfaceHover} ${t.textSecondary}`}`}
+                                  >
+                                    Done
+                                  </button>
+                                  <button
+                                    onClick={() => toggleCheckin(c.id, 'skip')}
+                                    className={`px-2 py-1 rounded text-xs font-medium ${isSkip ? 'bg-amber-400 text-white' : `${t.surfaceHover} ${t.textSecondary}`}`}
+                                  >
+                                    Skip
+                                  </button>
+                                  <button
+                                    onClick={() => toggleCheckin(c.id, 'miss')}
+                                    className={`px-2 py-1 rounded text-xs font-medium ${isMiss ? 'bg-red-500 text-white' : `${t.surfaceHover} ${t.textSecondary}`}`}
+                                  >
+                                    Miss
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="space-y-2">
+                          {showAddCommitment === domain.key ? (
+                            <div className="space-y-2">
+                              <input
+                                type="text"
+                                value={newCommitmentText}
+                                onChange={(e) => setNewCommitmentText(e.target.value)}
+                                placeholder="Commitment description"
+                                className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                              />
                               <select
                                 value={newCommitmentFreq}
                                 onChange={(e) => setNewCommitmentFreq(e.target.value)}
-                                className={`px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                                className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
                               >
                                 <option value="daily">Daily</option>
                                 <option value="3x/week">3x/week</option>
                                 <option value="1x/week">1x/week</option>
                               </select>
-                              <button
-                                onClick={() => addCommitment(domain.key)}
-                                className={`px-4 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}
-                              >
-                                Add
-                              </button>
-                              <button
-                                onClick={() => { setShowAddCommitment(null); setNewCommitmentText(''); }}
-                                className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}
-                              >
-                                Cancel
-                              </button>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => addCommitment(domain.key)}
+                                  className={`flex-1 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => { setShowAddCommitment(null); setNewCommitmentText(''); }}
+                                  className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <button 
-                            onClick={() => setShowAddCommitment(domain.key)}
-                            className={`w-full flex items-center justify-center gap-2 p-3 ${t.textSecondary} ${t.surfaceHover}`}
-                          >
-                            <Icon name="Plus" className="w-4 h-4" />
-                            <span className="text-sm">Add commitment</span>
-                          </button>
-                        )}
+                          ) : (
+                            <button
+                              onClick={() => setShowAddCommitment(domain.key)}
+                              className={`w-full py-2 rounded-lg border ${t.border} ${t.surfaceHover} ${t.text} text-sm font-medium`}
+                            >
+                              + Add commitment
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -830,6 +965,39 @@
                   );
                 })}
               </div>
+            </div>
+
+            {/* Daily Reflection */}
+            <div className={`${t.surface} rounded-lg border ${t.border} p-4`}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className={`font-medium ${t.text}`}>End-of-day reflection</h3>
+                  <p className={`text-xs ${t.textSecondary}`}>Optional sentence or two about today</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      setIsReflectionSaving(true);
+                      await api.saveDailyReflection(selectedDate, dailyReflection);
+                      showToast('Reflection saved');
+                    } catch (err) {
+                      showToast(err.message || 'Failed to save reflection');
+                    } finally {
+                      setIsReflectionSaving(false);
+                    }
+                  }}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium ${t.accentBg} text-white disabled:opacity-50`}
+                  disabled={isReflectionSaving}
+                >
+                  {isReflectionSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+              <textarea
+                value={dailyReflection}
+                onChange={(e) => setDailyReflection(e.target.value)}
+                placeholder="e.g., Felt calm after a 20-min walk; skipped late-night snacks"
+                className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text} text-sm focus:outline-none h-24`}
+              />
             </div>
           </div>
         );
@@ -1325,7 +1493,7 @@
                       <button onClick={addTransfer} className={`flex-1 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}>
                         Transfer
                       </button>
-                      <button onClick={() => { setShowTransfer(false); setFormError(''); }} className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}>
+                      <button onClick={() => { setShowTransfer(false); setFormError(''); }} className={`px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700`}>
                         Cancel
                       </button>
                     </div>
@@ -1441,7 +1609,7 @@
                       <button onClick={addTransaction} className={`flex-1 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}>
                         Add Transaction
                       </button>
-                      <button onClick={() => { setShowAddTransaction(false); setFormError(''); setConversionInfo(null); }} className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}>
+                      <button onClick={() => { setShowAddTransaction(false); setFormError(''); setConversionInfo(null); }} className={`px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700`}>
                         Cancel
                       </button>
                     </div>
@@ -1515,8 +1683,8 @@
                                 tx.type === 'income' ? 'ArrowUp' : 
                                 tx.type === 'transfer' ? 'ArrowDown' : 'ArrowDown'
                               } className={`w-4 h-4 ${
-                                tx.type === 'income' ? 'text-emerald-600' : 
-                                tx.type === 'transfer' ? 'text-blue-600 rotate-90' : 'text-red-600'
+                                tx.type === 'income' ? 'text-emerald-500' : 
+                                tx.type === 'transfer' ? 'text-blue-500 rotate-90' : 'text-red-500'
                               }`} />
                             </div>
                             <div>
@@ -1532,8 +1700,8 @@
                             </div>
                           </div>
                         <div className={`font-medium ${
-                            tx.type === 'income' ? 'text-emerald-600' : 
-                            tx.type === 'transfer' ? 'text-blue-600' : 'text-red-600'
+                            tx.type === 'income' ? 'text-emerald-500 font-semibold' : 
+                            tx.type === 'transfer' ? 'text-blue-500 font-semibold' : 'text-red-500 font-semibold'
                           }`}>
                             {tx.type === 'income' ? '+' : tx.type === 'transfer' ? '↔' : '-'}{sym}{tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             {tx.converted_amount && tx.currency !== currency && (
@@ -1563,109 +1731,107 @@
                     ))
                   )}
                 </div>
+
+                {showEditTransaction && editTx && (
+                  <div className={`${t.surface} rounded-lg border ${t.border} p-4 space-y-3 mt-4`}>
+                    <h3 className={`font-medium ${t.text}`}>Edit Transaction</h3>
+                    {formError && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{formError}</div>}
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setEditTx(p => ({ ...p, type: 'income' }))}
+                        className={`flex-1 py-2 rounded-lg text-sm font-medium ${editTx.type === 'income' ? 'bg-emerald-500/20 text-emerald-600' : `${t.accentBgLight} ${t.textSecondary}`}`}
+                      >
+                        Income
+                      </button>
+                      <button
+                        onClick={() => setEditTx(p => ({ ...p, type: 'expense' }))}
+                        className={`flex-1 py-2 rounded-lg text-sm font-medium ${editTx.type === 'expense' ? 'bg-red-500/20 text-red-600' : `${t.accentBgLight} ${t.textSecondary}`}`}
+                      >
+                        Expense
+                      </button>
+                    </div>
+                    
+                    <input
+                      type="date"
+                      value={editTx.date}
+                      onChange={(e) => setEditTx(p => ({ ...p, date: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    />
+                    
+                    <select
+                      value={editTx.account_id}
+                      onChange={(e) => setEditTx(p => ({ ...p, account_id: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="">Select account</option>
+                      {accounts.accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.bank} - {acc.name}</option>
+                      ))}
+                    </select>
+                    
+                    <select
+                      value={editTx.category}
+                      onChange={(e) => setEditTx(p => ({ ...p, category: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    >
+                      <option value="">Select category</option>
+                      {(editTx.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                    
+                    <input
+                      type="text"
+                      value={editTx.amount}
+                      onChange={(e) => setEditTx(p => ({ ...p, amount: e.target.value }))}
+                      placeholder="Amount"
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    />
+                    
+                    <input
+                      type="text"
+                      value={editTx.description}
+                      onChange={(e) => setEditTx(p => ({ ...p, description: e.target.value }))}
+                      placeholder="Description"
+                      className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
+                    />
+                    
+                    <div className="flex gap-2">
+                      <button onClick={updateTransaction} className={`flex-1 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}>
+                        Save Changes
+                      </button>
+                      <button onClick={() => { setShowEditTransaction(null); setEditTx(null); setFormError(''); }} className={`px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700`}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {showDeleteConfirm && (
+                  <div className={`${t.surface} rounded-lg border border-red-200 p-4 space-y-3 mt-4`}>
+                    <h3 className={`font-medium text-red-700`}>Delete Transaction?</h3>
+                    <p className={`text-sm ${t.textSecondary}`}>
+                      This will move the transaction to trash and reverse its balance effects. You can restore it later from the Trash view.
+                    </p>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => deleteTransaction(showDeleteConfirm)} 
+                        className={`flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium`}
+                      >
+                        Delete
+                      </button>
+                      <button 
+                        onClick={() => setShowDeleteConfirm(null)} 
+                        className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {/* Edit Transaction Modal */}
-              {showEditTransaction && editTx && (
-                <div className={`${t.surface} rounded-lg border ${t.border} p-4 space-y-3 mt-4`}>
-                  <h3 className={`font-medium ${t.text}`}>Edit Transaction</h3>
-                  {formError && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{formError}</div>}
-                  
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setEditTx(p => ({ ...p, type: 'income' }))}
-                      className={`flex-1 py-2 rounded-lg text-sm font-medium ${editTx.type === 'income' ? 'bg-emerald-500/20 text-emerald-600' : `${t.accentBgLight} ${t.textSecondary}`}`}
-                    >
-                      Income
-                    </button>
-                    <button
-                      onClick={() => setEditTx(p => ({ ...p, type: 'expense' }))}
-                      className={`flex-1 py-2 rounded-lg text-sm font-medium ${editTx.type === 'expense' ? 'bg-red-500/20 text-red-600' : `${t.accentBgLight} ${t.textSecondary}`}`}
-                    >
-                      Expense
-                    </button>
-                  </div>
-                  
-                  <input
-                    type="date"
-                    value={editTx.date}
-                    onChange={(e) => setEditTx(p => ({ ...p, date: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
-                  />
-                  
-                  <select
-                    value={editTx.account_id}
-                    onChange={(e) => setEditTx(p => ({ ...p, account_id: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
-                  >
-                    <option value="">Select account</option>
-                    {accounts.accounts.map(acc => (
-                      <option key={acc.id} value={acc.id}>{acc.bank} - {acc.name}</option>
-                    ))}
-                  </select>
-                  
-                  <select
-                    value={editTx.category}
-                    onChange={(e) => setEditTx(p => ({ ...p, category: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
-                  >
-                    <option value="">Select category</option>
-                    {(editTx.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                  
-                  <input
-                    type="text"
-                    value={editTx.amount}
-                    onChange={(e) => setEditTx(p => ({ ...p, amount: e.target.value }))}
-                    placeholder="Amount"
-                    className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
-                  />
-                  
-                  <input
-                    type="text"
-                    value={editTx.description}
-                    onChange={(e) => setEditTx(p => ({ ...p, description: e.target.value }))}
-                    placeholder="Description"
-                    className={`w-full px-3 py-2 rounded-lg border ${t.input} ${t.text}`}
-                  />
-                  
-                  <div className="flex gap-2">
-                    <button onClick={updateTransaction} className={`flex-1 py-2 ${t.accentBg} text-white rounded-lg text-sm font-medium`}>
-                      Save Changes
-                    </button>
-                    <button onClick={() => { setShowEditTransaction(null); setEditTx(null); setFormError(''); }} className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Delete Confirmation */}
-              {showDeleteConfirm && (
-                <div className={`${t.surface} rounded-lg border border-red-200 p-4 space-y-3 mt-4`}>
-                  <h3 className={`font-medium text-red-700`}>Delete Transaction?</h3>
-                  <p className={`text-sm ${t.textSecondary}`}>
-                    This will move the transaction to trash and reverse its balance effects. You can restore it later from the Trash view.
-                  </p>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => deleteTransaction(showDeleteConfirm)} 
-                      className={`flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium`}
-                    >
-                      Delete
-                    </button>
-                    <button 
-                      onClick={() => setShowDeleteConfirm(null)} 
-                      className={`px-4 py-2 ${t.surfaceHover} ${t.textSecondary} rounded-lg text-sm`}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
 
             {viewMode === 'trash' && (
               <div className={`${t.surface} rounded-lg border ${t.border} overflow-hidden`}>
@@ -2130,7 +2296,12 @@
       return <MainApp user={user} token={token} onLogout={handleLogout} />;
     }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    try {
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    } catch (err) {
+      console.error('React rendering error:', err);
+      document.getElementById('root').innerHTML = '<div style="padding: 2rem; max-width: 600px; margin: 2rem auto; background: #fee2e2; border: 2px solid #dc2626; border-radius: 0.5rem; font-family: system-ui;"><h2 style="color: #dc2626; margin-bottom: 1rem;">⚠️ App Error</h2><p style="margin-bottom: 0.5rem;">Failed to initialize app:</p><pre style="background: #fff; padding: 1rem; border-radius: 0.25rem; overflow-x: auto; font-size: 0.75rem;">' + err.stack + '</pre></div>';
+    }
   </script>
 </body>
 </html>
